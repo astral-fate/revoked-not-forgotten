@@ -73,6 +73,8 @@ compared with lineage marks on the same handoffs.
 | Model | Lineage marks, no citations | Taint + marks | Citation quarantine | **Taint + quarantine** (exact) | **Taint + quarantine** (normalised) |
 |---|---|---|---|---|---|
 | GPT-6 Luna | 42% | 4% | 0% | **4%** | **0%** |
+| DeepSeek-V4 Flash | – | 8% | 0% | **0%** | **0%** |
+| GLM-5.2 | – | 0% | 0% | **0%** | **0%** |
 | Qwen3.8 27B | 62% | 15% | 0% | **0%** | **0%** |
 | Gemma 4 31B | 73% | 52% | 0% | **0%** | **0%** |
 | Ministral-3 14B | 67% | 73% | 60% | **2%** | **0%** |
@@ -84,6 +86,7 @@ compared with lineage marks on the same handoffs.
   for Ministral.
 - **Platform enforcement works until the attacker rewords.** Quarantining lines found by matching the revoked worker's
   own content (normalised) left 0% residue for every model tested.
+- **False alarms cost some models.** Quarantining an honest worker's content cost GLM-5.2 50 points of task success (95% CI 31–64) (it re-obtained the value but often closed the ticket without writing it back); GPT-6 Luna and DeepSeek lost about 20 points; the open models changed little.
 
 **Stress tests of the limitations** (experiments 09–13; GPT-6 Luna, Gemma, Qwen, Ministral):
 
@@ -96,7 +99,7 @@ compared with lineage marks on the same handoffs.
 | A coordinator rewrites the handoff (two hops) | lineage marks lose most of their effect (30% → 52%); taint quarantine and the gate unaffected |
 | Six new ticket templates (seeds 100–147) | same pattern: credentials only 82% → 76%; taint quarantine 0% |
 | Temperature 0.0 / 0.7 / 1.0 (Qwen, Ministral) | credential-only residue 74% / 72% / 75% |
-| Normalised re-grading of 6,037 trials | +8 residue cases (+19 counting the value without its code) on 1,874; no false positives |
+| Normalised re-grading of 6,258 trials | +8 residue cases (+19 counting the value without its code) on 1,876; no false positives |
 | Ticket asks explicitly for the field to be corrected | clean task success 47% → 100%; residue conclusions unchanged |
 
 **A trained executor** (experiment 08, Qwen3.5-4B + LoRA, fresh seeds): residue under lineage marks
@@ -132,7 +135,7 @@ Luna's residue after revocation (25% vs 27%, p = 1.0) and completed more tickets
 
 Ablations (GPT-6 Luna, Qwen3.8 27B, Gemma 4 31B, Ministral-3 14B): `early_revoke` (revoked before the writer reads the board), `strict_notice` (the notice extends
 to derived content), `nocite_compromised` / `nocite_lineage` (writer not asked to cite), `nosource_lineage` /
-`nosource_benign` (no `reassign_lookup` tool). Platform mitigations (same four models): `revoke_quarantine` /
+`nosource_benign` (no `reassign_lookup` tool). Platform mitigations (the same four models plus DeepSeek-V4 Flash and GLM-5.2): `revoke_quarantine` /
 `benign_quarantine` (withhold lines that cite worker-X), `taint_lineage` / `taint_quarantine` / `benign_taint_quarantine`
 (locate derived lines by matching worker-X's value and address in no-citation handoffs), and `taint_quarantine_norm` /
 `benign_taint_quarantine_norm` (the same after normalising case, digit grouping, whitespace and dashes).
@@ -160,7 +163,7 @@ Every experiment has its own folder with a `README.md` (question, conditions, pa
 | [`03_ablation_strict_notice`](experiments/03_ablation_strict_notice/) | Is the notice's weakness its scope? | Luna, Qwen, Gemma, Ministral | 192 | §4.3 · Table A |
 | [`04_ablation_no_citation`](experiments/04_ablation_no_citation/) | Do lineage marks need recorded provenance? | Luna, Qwen, Gemma, Ministral | 384 | §4.3 · Table A |
 | [`05_ablation_no_second_source`](experiments/05_ablation_no_second_source/) | Do mitigations and false alarms need a second source? | Luna, Qwen, Gemma, Ministral | 384 | §4.3–4.4 · Table A |
-| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance remove residue, at what false-alarm cost? | Luna, Qwen, Gemma, Ministral | 1,344 | §4.5 · Table 3 |
+| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance remove residue, at what false-alarm cost? | Luna, DeepSeek, GLM, Qwen, Gemma, Ministral | 2,016 | §4.5 · Table 3 |
 | [`07_mixed_teams`](experiments/07_mixed_teams/) | Does residue follow the writer or the executor? | Qwen⇒Gemma, Qwen⇒Ministral, Gemma⇒Qwen, Ministral⇒Qwen | 576 | §4.6 · Table A.2 |
 | [`08_training_fix`](experiments/08_training_fix/) | Can a fine-tuned executor remove residue? Stress tests and a paired test against GPT-6 Luna | Qwen3.5-4B base vs LoRA | 2,112 | §4.8 · Appendix |
 | [`09_adaptive_attacker`](experiments/09_adaptive_attacker/) | Does residue survive an attacker that anticipates provenance tracking; does an action gate stop it? | Luna, Qwen, Gemma, Ministral | 2,496 | §4.7 · Table 4 |
@@ -168,7 +171,7 @@ Every experiment has its own folder with a `README.md` (question, conditions, pa
 | [`11_more_templates`](experiments/11_more_templates/) | Does the pattern hold on six new ticket templates? | Luna, Qwen, Gemma, Ministral | 1,344 | §4.7 · Appendix |
 | [`12_temperature`](experiments/12_temperature/) | Does it depend on sampling temperature (0.0, 1.0)? | Qwen, Ministral | 768 | §4.7 · Appendix |
 | [`13_explicit_ticket`](experiments/13_explicit_ticket/) | Does an explicit ticket change task success or residue? | Gemma, Qwen | 288 | §4.7 · Appendix |
-| **Total** | | | **13,392** | |
+| **Total** | | | **14,064** | |
 
 Each `results/<model>/` holds `trials.jsonl` (one graded trial per line), `transcripts/` (the full executor conversation
 for every trial) and `run.log`; `01_main_grid/results/<model>/handoffs.jsonl` holds the cached writer handoffs that the

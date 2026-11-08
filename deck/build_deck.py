@@ -295,7 +295,8 @@ if QWEN in ABL_MODELS and MINI in ABL_MODELS:
 
 # experiment 06: platform mitigations
 PLAT_MODELS = [m for m in MODELS if all(cell_ok(m, c) for c in ("revoke_quarantine", "benign_quarantine", "taint_lineage",
-                                                                   "taint_quarantine", "benign_taint_quarantine"))]
+                                                                   "taint_quarantine", "benign_taint_quarantine",
+                                                                   "nocite_lineage"))]  # the taint rows are compared with it
 PLAT_ROWS = [("revoke_lineage", "citations", "mark"), ("nocite_lineage", "citations (none written)", "mark"),
              ("revoke_quarantine", "citations", "withhold"), ("taint_lineage", "platform taint", "mark"),
              ("taint_quarantine", "platform taint", "withhold")]
