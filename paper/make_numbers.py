@@ -368,7 +368,10 @@ def main():
     main_set = {c for (lab, c) in cells if "=>" not in lab and c in CONDITIONS}
     MAIN = [c for c in ORDER if c in main_set and c != "benign_lineage"] + \
            sorted(main_set - set(ORDER)) + (["benign_lineage"] if "benign_lineage" in main_set else [])
-    models = sorted({lab for (lab, c) in cells if "=>" not in lab and c in MAIN}, key=order_key)
+    # a model enters the paper only once every core main-grid cell is complete (runs still in progress are left out)
+    CORE = [c for c in MAIN if c != "benign_lineage"]
+    models = sorted({lab for (lab, c) in cells if "=>" not in lab and c in MAIN
+                     and all((lab, k) in cells for k in CORE)}, key=order_key)
     ABL = [c for c in ABL_ORDER if c in ABLATIONS and any((m, c) in cells for m in models)] + \
           sorted({c for (lab, c) in cells if c in ABLATIONS and c not in ABL_ORDER})
     MIT = [c for c in MIT_ORDER if any((m, c) in cells for m in models)] + \
