@@ -1069,7 +1069,7 @@ foot(s)
 # ===========================================================================
 # 5 — DIVIDER 01
 # ===========================================================================
-divider(prs, "01", "Part one  ·  the testbed", "An agent team, a compromised\nworker, a revocation")
+divider(prs, "02", "Section 2  ·  methodology and harness", "The testbed: an agent team,\na compromised worker, a revocation")
 
 # ===========================================================================
 # 6 — THREAT MODEL + TIMELINE
@@ -1282,7 +1282,7 @@ foot(s)
 # ===========================================================================
 # 11 — DIVIDER 02
 # ===========================================================================
-divider(prs, "02", "Part two  ·  results", "Residual influence,\nand what removes it")
+divider(prs, "04", "Section 4  ·  results", "Residual influence,\nand what removes it")
 
 # ===========================================================================
 # 12 — HEADLINE (navy)
@@ -1752,8 +1752,8 @@ def grp_head(s, x, y, w, txt, c=TEAL):
 
 STRESS_N = xnm(STRESS_MODELS)
 if HAS_ADV or HAS_HOP or HAS_TPL or HAS_SFT:
-    divider(prs, "03", "Part three  ·  stress-testing the limitations",
-            "Adaptive attackers, longer chains,\na trained executor")
+    divider(prs, "05", "Section 5  ·  ablations and stress tests",
+            "Why the mechanisms work,\nand where they break")
 
 # ---- 09 adaptive attacker -------------------------------------------------------
 # verbatim attack posts and the scope-quarantine leak (from the executor transcripts)
@@ -2186,6 +2186,141 @@ for j, (k, cap) in enumerate([("repo", "Code, data & transcripts"), ("sprint", "
     text(s, xx - 0.4, 5.8, 3.3, 0.5, cap, size=14, color=WHITE, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
 text(s, 12.5, 6.4, 6.6, 0.5, REPO_URL.replace("https://", ""), size=11, color=MIST, font=MONO, align=PP_ALIGN.CENTER)
 
+# ===========================================================================
+# STORY STRUCTURE: section dividers, the proposed-solution and key-findings slides, then reorder into
+#   1 context & problem · 2 methodology & harness · 3 proposed solution & architecture · 4 results ·
+#   5 ablations & stress tests · 6 findings & recommendations · 7 limitations
+# ===========================================================================
+def _mx(k):
+    return MXV.get(k, "–").replace("\\%", "%")
+
+divider(prs, "01", "Section 1  ·  context and problem", "Revoking an agent stops the agent.\nDoes it stop its work?")
+divider(prs, "03", "Section 3  ·  proposed solution", "Make revocation reach content,\nenforced by the platform")
+divider(prs, "06", "Section 6  ·  findings and recommendations", "What the evidence says,\nand what platforms should do")
+divider(prs, "07", "Section 7  ·  limitations", "What this study does\nand does not establish")
+
+# ---- proposed solution: the defence ladder on the system architecture -----------------------------
+s = slide(prs, PAPER)
+kicker(s, "Proposed solution  ·  system architecture")
+title(s, "Move the defence from what the executor sees to what the platform enforces", size=34)
+_aw2, _ah2 = Image.open(ARCH).size
+iw = 9.4; ih = iw * _ah2 / _aw2
+card(s, 0.9, 2.15, iw + 0.4, ih + 0.3)
+s.shapes.add_picture(str(ARCH), Inches(1.1), Inches(2.3), Inches(iw), Inches(ih))
+bx = 0.9 + iw + 0.7; bw = 19.1 - bx
+rect(s, bx, 2.15, bw, ih + 0.3, fill=NAVY, radius=0.04)
+text(s, bx + 0.35, 2.35, bw - 0.7, 0.4, "THE PROPOSAL IN THREE STEPS", size=12.5, color=TEALBR, bold=True, font=HEAD)
+_steps = [("1  Record provenance on the platform", "find what derives from the revoked agent without relying on agents' citations"),
+          ("2  Withhold derived content on revocation", "quarantine it until another agent has re-obtained it"),
+          ("3  Enforce re-derivation at the action", "the tool server rejects writes and transfers that were not re-derived")]
+yy = 2.9
+for h_, d_ in _steps:
+    text(s, bx + 0.35, yy, bw - 0.7, 0.4, h_, size=15, color=WHITE, bold=True, font=HEADB)
+    text(s, bx + 0.35, yy + 0.42, bw - 0.7, 0.7, d_, size=12, color=MIST, font=BODY, spacing=1.0)
+    yy += 1.25
+# ladder table: every rung with who has to act, pooled residue, and what breaks it
+ty0 = 2.15 + ih + 0.65
+_lad = [("Credentials only", "nobody", pc(POOL_SILENT), "the content was already handed off"),
+        ("+ notice", "executor's judgement", pc(R(None, "revoke_notice", "any_residue")), "helps some models only"),
+        ("+ lineage marks", "executor's judgement", pc(R(None, "revoke_lineage", "any_residue")),
+         "writer drops citations; a second hop removes them"),
+        ("Taint quarantine (normalised)", "platform",
+         f"{NORM_K}/{NORM_N}" if HAS_NORM else "–",
+         f"attacker rewords its values ({pc(ADV['obf_taint']['b'])} residue)" if HAS_ADV else "attacker rewords its values"),
+        ("Action gate", "platform tool server", pc(ADV["gate"]["b"]) if HAS_ADV else "–",
+         f"free-text notes; executors escalate more ({pc(GATE_B['gate']['escalated'])})" if HAS_ADV else "")]
+cols = [(0.9, 4.6, "Mechanism"), (5.6, 3.6, "Who has to act"), (9.3, 2.6, "Residue"), (12.0, 7.1, "Breaks when")]
+for x_, w_, h_ in cols:
+    text(s, x_ + 0.15, ty0, w_, 0.35, h_.upper(), size=11, color=TEAL, bold=True, font=HEAD)
+line(s, 0.9, ty0 + 0.4, 18.2, 0.02, LINEC)
+rh = (10.25 - ty0 - 0.5) / len(_lad)
+for i_, (m_, who, res, brk) in enumerate(_lad):
+    y_ = ty0 + 0.5 + i_ * rh
+    plat = who.startswith("platform")
+    if plat:
+        rect(s, 0.9, y_ - 0.04, 18.2, rh - 0.06, fill=TEAL_T, radius=0.04)
+    text(s, 1.05, y_, 4.5, rh - 0.1, m_, size=13, color=INK, bold=True, font=HEADB, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, 5.75, y_, 3.5, rh - 0.1, who, size=12, color=(TEAL if plat else SLATE), bold=plat, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, 9.45, y_, 2.5, rh - 0.1, res, size=15, color=(GREEN if plat else RED), bold=True, font=HEADB, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, 12.15, y_, 6.9, rh - 0.1, brk, size=12, color=SLATE, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+foot(s)
+
+# ---- key findings ------------------------------------------------------------------------------------
+s = slide(prs, PAPER)
+kicker(s, "Key findings")
+title(s, "Five things the evidence shows", size=38)
+_lin = [R(m, "revoke_lineage", "any_residue")["p"] for m in MODELS]
+_ntc = [nm(m) for m in MODELS if PR(m, "revoke_silent", "revoke_notice", "any_residue")["p"] < 0.05
+        and R(m, "revoke_notice", "any_residue")["p"] < R(m, "revoke_silent", "any_residue")["p"]]
+_find = [(f"{pc(POOL_COMP)} → {pc(POOL_SILENT)}", RED, "Credential revocation leaves the content in place",
+          f"Pooled residue without revocation vs credential-only revocation, {len(MODELS)} models. The false fact already "
+          f"lives in a teammate's handoff."),
+         (f"{round(100 * min(_lin))}–{round(100 * max(_lin))}%", AMBER_D, "Signals to the executor are model-dependent",
+          f"Residue under lineage marks, by model. A notice helped only {', '.join(_ntc) or 'no model'}; deleting the "
+          f"revoked agent's posts added nothing."),
+         ((f"{NORM_K}/{NORM_N}" if HAS_NORM else "–"), GREEN, "Platform taint quarantine removes residue …",
+          "Trials with residue when the platform matched the revoked agent's own (normalised) content and withheld it."),
+         ((f"{pc(ADV['obf_taint']['b'])} → {pc(ADV['obf_gate']['b'])}" if HAS_ADV else "–"), TEAL,
+          "… until the attacker rewords; an action gate holds",
+          (f"Residue against an obfuscating attacker: taint quarantine vs a tool-server gate. Cost: executors escalate "
+           f"in {pc(GATE_B['gate']['escalated'])} of gated trials.") if HAS_ADV else ""),
+         ((f"{_mx('x/vsluna/revoked/any/tuned')} vs {_mx('x/vsluna/revoked/any/luna')}"), TEAL,
+          "A trained 4B executor matches GPT-6 Luna",
+          f"Residue after revocation on Luna's own handoffs (tuned 4B vs Luna), with more tickets completed "
+          f"({_mx('x/vsluna/revoked/task/tuned')} vs {_mx('x/vsluna/revoked/task/luna')}). It fails when the worker is "
+          f"not revoked.")]
+_pos = [(0.9, 2.3), (7.05, 2.3), (13.2, 2.3), (0.9, 6.35), (7.05, 6.35)]
+for (x_, y_), (big, col, head, body) in zip(_pos, _find):
+    card(s, x_, y_, 5.95, 3.8, bar=col)
+    text(s, x_ + 0.35, y_ + 0.4, 5.3, 0.9, big, size=34, color=col, bold=True, font=HEADB)
+    text(s, x_ + 0.35, y_ + 1.4, 5.3, 0.8, head, size=15, color=INK, bold=True, font=HEADB, spacing=1.0)
+    text(s, x_ + 0.35, y_ + 2.25, 5.3, 1.45, body, size=11.5, color=SLATE, font=BODY, spacing=1.05)
+rect(s, 13.2, 6.35, 5.95, 3.8, fill=NAVY, radius=0.06)
+text(s, 13.55, 6.75, 5.3, 0.4, "THE TAKEAWAY", size=12.5, color=TEALBR, bold=True, font=HEAD)
+text(s, 13.55, 7.3, 5.3, 2.6, "Revocation for agent teams has to reach content and the actions derived from it, "
+     "enforced by the platform rather than honoured by the agents.", size=16, color=WHITE, bold=True, font=HEADB, spacing=1.1)
+foot(s)
+
+# ---- reorder into the story ------------------------------------------------------------------------------
+def _texts(sl):
+    return [sh.text_frame.text.strip() for sh in sl.shapes if sh.has_text_frame and sh.text_frame.text.strip()]
+
+_ORDER = ["AT A GLANCE", "#01", "WHY THIS NEEDS MEASURING", "THE CONCEPT AT THE CENTRE", "RELATED WORK",
+          "#02", "THREAT MODEL AND TESTBED", "THE ATTACK PAYLOADS", "SEVEN CONDITIONS", "METRICS & EVALUATION", "MODELS & SETUP",
+          "#03", "PROPOSED SOLUTION",
+          "#04", "HEADLINE RESULT", "ALL MAIN CONDITIONS", "FIGURE", "TELLING THE EXECUTOR", "MINISTRAL-3 14B  ·  REVOKE_LINEAGE",
+          "EXPERIMENT 06  ·  THE RECOMMENDED", "EXPERIMENT 06  ·  MINISTRAL", "USEFULNESS COST",
+          "#05", "ABLATIONS 1", "ABLATIONS 3", "EXPERIMENT 07", "EXPERIMENT 09  ·", "EXPERIMENT 09B", "EXPERIMENT 10",
+          "EXPERIMENTS 11", "EXPERIMENT 08",
+          "#06", "KEY FINDINGS", "DESIGN RECOMMENDATIONS",
+          "#07", "WHAT THE RESULTS DO AND DO NOT ESTABLISH", "REFERENCES & LINKS", "THANK YOU"]
+_sl = list(prs.slides)
+_ids = list(prs.slides._sldIdLst)
+_used, _new = set(), []
+for key in _ORDER:
+    for i_, sl in enumerate(_sl):
+        if i_ in _used:
+            continue
+        tx = _texts(sl)
+        if not tx:
+            continue
+        hit = (tx[0] == key[1:]) if key.startswith("#") else tx[0].upper().startswith(key)
+        if hit:
+            _used.add(i_); _new.append(i_)
+            break
+_left = [i_ for i_ in range(len(_sl)) if i_ not in _used]
+assert not _left, f"slides not placed in the story order: {[_texts(_sl[i_])[:1] for i_ in _left]}"
+for el in _ids:
+    prs.slides._sldIdLst.remove(el)
+for i_ in _new:
+    prs.slides._sldIdLst.append(_ids[i_])
+# footers carry the slide number from creation time: renumber them in the new order
+for n_, sl in enumerate(prs.slides, 1):
+    for sh in sl.shapes:
+        if sh.has_text_frame and re.fullmatch(r"\d{2}", sh.text_frame.text.strip() or "x") and sh.left > Inches(SW - 4.5) \
+                and sh.top > Inches(SH - 1.0):
+            sh.text_frame.paragraphs[0].runs[0].text = f"{n_:02d}"
+
 # ---- save + verify + render ----------------------------------------------------
 OUT = HERE / "revoked_not_forgotten_deck.pptx"
 prs.save(str(OUT))
@@ -2205,5 +2340,11 @@ if "--no-render" not in sys.argv:
 # ===========================================================================
 # HTML slide version (same numbers, same verbatim texts)
 # ===========================================================================
-import build_html  # noqa: E402
-build_html.write(globals())
+# ---- HTML: an exact copy of the deck (its own rendering), with the slide text embedded
+import html_viewer  # noqa: E402
+_pdf = HERE / "revoked_not_forgotten_deck.pdf"
+if _pdf.exists() and "--no-render" not in sys.argv:
+    _n = html_viewer.write(_pdf, [_texts(sl) for sl in prs.slides], HERE / "slides.html",
+                           "Revoked but Not Forgotten · slides")
+    shutil.copy(HERE / "slides.html", REPO / "slides.html")
+    print("html slides:", _n, "(exact copy of the deck)")
