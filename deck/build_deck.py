@@ -41,7 +41,7 @@ FIGDIR = HERE / "fig"
 sys.path.insert(0, str(REPO / "src"))
 from revres.analyze import load, wilson, paired, mcnemar_exact, ORDER, rate_table, figures  # noqa: E402
 from revres import env as ENV  # noqa: E402
-from revres.scenarios import make_scenario, TEMPLATES  # noqa: E402
+from revres.scenarios import make_scenario, TEMPLATES, TEMPLATES_B  # noqa: E402
 
 BRAND = "Revoked but Not Forgotten  ·  Apart Research Swarm Alignment Hackathon 2026"
 M_ = "−"
@@ -66,18 +66,27 @@ AMB_ON_DARK = RGBColor(0xFC, 0xD3, 0x4D)
 # DATA — every number below is computed from trials.jsonl
 # ===========================================================================
 DISPLAY = {"openai/gpt-6-luna": "GPT-6 Luna", "modal:gemma-4-31b-it": "Gemma 4 31B",
-           "modal:ministral-3-14b": "Ministral-3 14B", "modal:qwen3.8-27b": "Qwen3.8 27B"}
+           "modal:ministral-3-14b": "Ministral-3 14B", "modal:qwen3.8-27b": "Qwen3.8 27B",
+           # display names as in paper/make_numbers.py NICE
+           "adaption:glm-5.2": "GLM-5.2", "adaption:deepseek-v4-flash": "DeepSeek-V4 Flash",
+           "adaption:qwen3.5-397b": "Qwen3.5 397B"}
 SERVED = {"openai/gpt-6-luna": ("openai/gpt-6-luna", "OpenRouter API"),
           "modal:gemma-4-31b-it": ("google/gemma-4-31B-it", "vLLM 0.33.0 · 1× H100 on Modal"),
           "modal:ministral-3-14b": ("mistralai/Ministral-3-14B-Instruct-2512", "vLLM 0.33.0 · 1× H100 on Modal"),
           "modal:qwen3.8-27b": ("Qwen/Qwen3.8-27B", "vLLM 0.33.0 · 1× H100 on Modal · thinking off"),
-          "modal:gpt-oss-120b": ("gpt-oss-120b", "vLLM 0.33.0 · 1× H100 on Modal · reasoning low")}
-PREF = ["openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:qwen3.8-27b", "modal:ministral-3-14b", "modal:gpt-oss-120b"]
-PARTIAL_OK = {"openai/gpt-6-luna"}   # API budget exhausted at 302/336; documented in the paper (Sec. 3.4)
+          "modal:gpt-oss-120b": ("gpt-oss-120b", "vLLM 0.33.0 · 1× H100 on Modal · reasoning low"),
+          "adaption:glm-5.2": ("glm-5.2", "Adaption API"),
+          "adaption:deepseek-v4-flash": ("deepseek-v4-flash", "Adaption API"),
+          "adaption:qwen3.5-397b": ("qwen3.5-397b", "Adaption API")}
+PREF = ["openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:qwen3.8-27b", "modal:ministral-3-14b", "modal:gpt-oss-120b",
+        "adaption:glm-5.2", "adaption:deepseek-v4-flash", "adaption:qwen3.5-397b"]
+PARTIAL_OK = set()   # every included model must have all 7 main conditions x 48 seeds (runs in progress are skipped)
 SEEDS = 48
 
-# every experiment folder: experiments/<NN_name>/results/<model>/trials.jsonl
-run_dirs = sorted(p for p in RES.glob("*/results/*") if (p / "trials.jsonl").exists())
+# the base study: experiments 01-07 (experiments/<NN_name>/results/<model>/trials.jsonl). Experiments 08-13 reuse
+# (model, condition, seed) keys of the base study (12 re-runs seeds 0-47 at other temperatures, 11 adds seeds 100-147),
+# so they are loaded separately below (STRESS-TEST section) and never merged into ROWS.
+run_dirs = sorted(p for p in RES.glob("0[1-7]_*/results/*") if (p / "trials.jsonl").exists())
 _keys = defaultdict(int)
 for d in run_dirs:
     for l in (d / "trials.jsonl").read_text(encoding="utf-8").splitlines():
@@ -115,9 +124,17 @@ def _complete(m):
 MODELS = sorted([m for m in _models if "=>" not in m and _complete(m)], key=lambda m: (PREF.index(m) if m in PREF else 99, m))
 SKIPPED = sorted(m for m in _models if m not in MODELS)
 assert "openai/gpt-6-luna" in MODELS and "modal:gemma-4-31b-it" in MODELS, MODELS
-ROWS = [r for r in ALLROWS if r["model"] in MODELS]
+def cell_ok(m, c):
+    """a (model, condition) cell is used only when every seed is in (runs still in progress are skipped)."""
+    return _cnt[(m, c)] >= SEEDS
+ROWS = [r for r in ALLROWS if r["model"] in MODELS and cell_ok(r["model"], r["condition"])]
+N_PARTIAL_SKIPPED = sum(1 for r in ALLROWS if "=>" not in r["model"]
+                        and not (r["model"] in MODELS and cell_ok(r["model"], r["condition"])))
 MAIN = [r for r in ROWS if r["condition"] in ORDER]
 def nm(m): return DISPLAY.get(m, m.split(":")[-1].split("/")[-1])
+def andj(xs):
+    xs = list(xs)
+    return ", ".join(xs[:-1]) + " and " + xs[-1] if len(xs) > 1 else (xs[0] if xs else "–")
 NAMES = [nm(m) for m in MODELS]
 LUNA, GEMMA, MINI = "openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:ministral-3-14b"
 QWEN, OSS = "modal:qwen3.8-27b", "modal:gpt-oss-120b"
@@ -161,7 +178,8 @@ MIXROWS = [r for r in ALLROWS if "=>" in r["model"]]
 N_TRIALS = len(ROWS) + len(MIXROWS)
 N_EXPS = len({d.parent.parent.name for d in run_dirs})
 ABL_CONDS = sorted({r["condition"] for r in ROWS if r["condition"] not in ORDER})
-ABL_MODELS = [m for m in MODELS if any(r["model"] == m and r["condition"] == "strict_notice" for r in ROWS)]
+ABL_ALL = ["early_revoke", "strict_notice", "nocite_compromised", "nocite_lineage", "nosource_lineage", "nosource_benign"]
+ABL_MODELS = [m for m in MODELS if all(cell_ok(m, c) for c in ABL_ALL)]
 per_model_n = {m: sum(1 for r in MAIN if r["model"] == m) for m in MODELS}
 
 # headline: credential-only revocation vs none, per model + pooled
@@ -231,7 +249,10 @@ assert G, "Gemma ablations missing"
 
 # ---- consistency checks: qualitative claims on slides must hold in the data
 assert all(HL[m]["silent"]["p"] >= 0.5 for m in MODELS), "credential-only residue claim"
-assert sum(HL[m]["pr"]["p"] < 0.05 for m in MODELS) <= 1, "credential-only: at most one model changes significantly"
+# models whose residue dropped significantly under credential-only revocation (the headline names them)
+SIG_DROP = [m for m in MODELS if HL[m]["pr"]["p"] < 0.05 and HL[m]["pr"]["a"] > HL[m]["pr"]["b"]]
+assert all(HL[m]["pr"]["p"] >= 0.05 or m in SIG_DROP for m in MODELS), "no model's residue rose significantly"
+assert 2 * len(SIG_DROP) < len(MODELS), "credential-only: most models show no significant change"
 assert LUNA in NOTICE_HELPED and GEMMA in NOTICE_NOT
 assert MIT[GEMMA]["exp_notice"]["k"] == MIT[GEMMA]["exp_notice"]["n"], "Gemma exports in every exfil trial after notice"
 assert G["pr_early"]["p"] < 0.05 and G["early"]["k"] < G["retract"]["k"]
@@ -252,11 +273,15 @@ if HAS_OSS:
     OSS_DROP_ESC = sum(bool(_oi[("revoke_silent", sd)]["escalated"]) for sd in _drop)
     OSS_ESC_COMP, OSS_ESC_SIL = R(OSS, "compromised", "escalated"), R(OSS, "revoke_silent", "escalated")
     OSS_BOARD = sum(bool(r["read_board"]) for r in ROWS if r["model"] == OSS and r["condition"] in ("compromised", "revoke_silent"))
-    assert HL[OSS]["pr"]["p"] < 0.05 and OSS_DROP == HL[OSS]["pr"]["a"]
+    assert OSS in SIG_DROP and OSS_DROP == HL[OSS]["pr"]["a"]
     assert OSS_DROP_X * 2 > OSS_DROP, "gpt-oss drop came from contacting the revoked agent"
     assert OSS_BOARD == 0 and OSS_ESC_SIL["k"] > OSS_ESC_COMP["k"]
-    if POOL_PR["p"] < 0.05:
-        assert HL[OSS]["pr"]["a"] - HL[OSS]["pr"]["b"] >= (POOL_PR["a"] - POOL_PR["b"]) / 2, "pooled drop mostly gpt-oss"
+# the figure note says "the pooled drop comes mostly from <model>" only when one model carries at least half of it
+POOL_DROP_FROM = None
+if POOL_PR["p"] < 0.05 and SIG_DROP:
+    _top = max(SIG_DROP, key=lambda m: HL[m]["pr"]["a"] - HL[m]["pr"]["b"])
+    if HL[_top]["pr"]["a"] - HL[_top]["pr"]["b"] >= (POOL_PR["a"] - POOL_PR["b"]) / 2:
+        POOL_DROP_FROM = _top
 
 # ablation claims across all ablation models
 STRICT_OK = [m for m in ABL_MODELS if ABL[m]["pr_strict"]["p"] < 0.05 and ABL[m]["pr_strict"]["a"] > ABL[m]["pr_strict"]["b"]]
@@ -269,7 +294,8 @@ if QWEN in ABL_MODELS and MINI in ABL_MODELS:
     assert GEMMA in STRICT_OK and QWEN in STRICT_OK and MINI in STRICT_NO, (STRICT_OK, STRICT_NO)
 
 # experiment 06: platform mitigations
-PLAT_MODELS = [m for m in MODELS if any(r["model"] == m and r["condition"] == "taint_quarantine" for r in ROWS)]
+PLAT_MODELS = [m for m in MODELS if all(cell_ok(m, c) for c in ("revoke_quarantine", "benign_quarantine", "taint_lineage",
+                                                                   "taint_quarantine", "benign_taint_quarantine"))]
 PLAT_ROWS = [("revoke_lineage", "citations", "mark"), ("nocite_lineage", "citations (none written)", "mark"),
              ("revoke_quarantine", "citations", "withhold"), ("taint_lineage", "platform taint", "mark"),
              ("taint_quarantine", "platform taint", "withhold")]
@@ -296,10 +322,11 @@ for m in PLAT_MODELS:
 if PLAT_MODELS:
     assert all(PLAT[m]["taint_quarantine"]["any"]["p"] <= 0.05 for m in PLAT_MODELS), "taint+quarantine ≈ 0 for all"
     assert all(PLAT[m]["pr_tq_nocite"]["p"] < 0.05 for m in PLAT_MODELS)
-    assert all(PLAT[m]["pr_fa_btq"]["p"] >= 0.05 for m in PLAT_MODELS), "taint quarantine: no measurable false-alarm cost"
+    # false-alarm cost of taint quarantine: reported per model (amber when significant), never claimed to be zero
+    FA_SIG_BTQ = [m for m in PLAT_MODELS if PLAT[m]["pr_fa_btq"]["p"] < 0.05]
     if MINI in PLAT_MODELS:
         assert PLAT[MINI]["revoke_quarantine"]["any"]["p"] >= 0.5, "citation quarantine fails for Ministral"
-        assert all(PLAT[m]["revoke_quarantine"]["any"]["p"] <= 0.05 for m in PLAT_MODELS if m != MINI)
+        assert all(PLAT[m]["revoke_quarantine"]["any"]["p"] < PLAT[MINI]["revoke_quarantine"]["any"]["p"] for m in PLAT_MODELS if m != MINI)
     PLAT_TQ_MAXP = max(PLAT[m]["pr_tq_nocite"]["p"] for m in PLAT_MODELS)
     FA_SIG_BQ = [m for m in PLAT_MODELS if PLAT[m]["pr_fa_bq"]["p"] < 0.05]
     TQ_K = sum(PLAT[m]["taint_quarantine"]["any"]["k"] for m in PLAT_MODELS)
@@ -308,7 +335,7 @@ if HAS_NORM:
     NORM_K = sum(PLAT[m]["taint_quarantine_norm"]["any"]["k"] for m in PLAT_MODELS)
     NORM_N = sum(PLAT[m]["taint_quarantine_norm"]["any"]["n"] for m in PLAT_MODELS)
     assert NORM_K == 0, "normalised taint + quarantine: no residue for any model"
-    assert all(PLAT[m]["pr_fa_btqn"]["p"] >= 0.05 for m in PLAT_MODELS), "normalised: no measurable false-alarm cost"
+    FA_SIG_BTQN = [m for m in PLAT_MODELS if PLAT[m]["pr_fa_btqn"]["p"] < 0.05]
     # audit of the no-citation handoffs: what exact vs normalised taint matching leaves visible after withholding
     TAINT_MISS, NORM_LEAK, NOCITE_N, TAINT_EX = [], 0, 0, None
     for d in sorted((RES / "01_main_grid" / "results").glob("*")):
@@ -338,6 +365,8 @@ if HAS_NORM:
     _tq_res = [(r["model"], r["seed"]) for r in ROWS if r["condition"] == "taint_quarantine" and r["any_residue"]]
     assert set(_tq_res) <= set(TAINT_MISS), "every exact-taint residual trial was a reformatted value"
     TQ_RES = _tq_res
+    TQ_RES_TXT = (f"1 residual trial, {nm(TQ_RES[0][0])} seed {TQ_RES[0][1]}" if len(TQ_RES) == 1 else
+                  f"{len(TQ_RES)} residual trials, all on reformatted values" if TQ_RES else "no residual trial")
     _m = re.search(r"\d{1,3}(?:,\d{3})+", TAINT_EX[3]); assert _m and _m.group(0).replace(",", "") == TAINT_EX[2]
     TAINT_FMT = _m.group(0)
 
@@ -394,6 +423,268 @@ if TEAMS:
         assert (MIX[t]["revoke_lineage"]["p"] < 0.25) == lo_e, t
         assert (MIX[t]["alone_w"]["p"] < 0.25) != lo_e and MIX[t]["pr"]["p"] < 0.05, t
 
+
+# ===========================================================================
+# STRESS TESTS (experiments 08-13) — loaded with paper/make_ext.py's own loaders (rows, complete) and make_numbers'
+# paired McNemar; comparator cells from 01/04/06 are paired by seed (same model, same cached handoff). A cell is used
+# only when every seed is in. Every pooled value is cross-checked against a fresh in-memory run of make_ext.main().
+# ===========================================================================
+sys.path.insert(0, str(REPO / "paper"))
+import make_ext as MX  # noqa: E402
+from make_numbers import mcnemar as mx_mcnemar, pct as mx_pct, fmt_p as mx_fmt_p  # noqa: E402
+
+EXT_MODELS = list(MX.MODELS)                       # results folder names, as in make_ext
+EXT_ID = {f: next((m for m in sorted(_models) if "=>" not in m and m.split(":")[-1].split("/")[-1].startswith(f)), f)
+          for f in EXT_MODELS}
+X_BASE, X_EXT = {}, {}
+for f in EXT_MODELS:
+    b = {}
+    for e in ("01_main_grid", "04_ablation_no_citation", "06_platform_mitigations"):
+        b.update(MX.rows(RES / e / "results" / f))
+    X_BASE[f] = b
+    x = {}
+    for e in ("09_adaptive_attacker", "10_two_hop", "13_explicit_ticket"):
+        x.update(MX.rows(RES / e / "results" / f))
+    X_EXT[f] = x
+X_TPL = {f: MX.rows(RES / "11_more_templates" / "results" / f) for f in EXT_MODELS}
+X_TMP = {(f, t): MX.rows(RES / "12_temperature" / "results" / f"{f}-t{t}") for f in EXT_MODELS for t in ("0.0", "1.0")}
+
+def XP(ca, cb, src_a="base", field="any_residue", gb_of=None):
+    """Pooled paired comparison over the models with both cells complete (as make_ext.pooled).
+    -> dict(a=Wilson dict, b=Wilson dict, x, y, p, models) or None."""
+    ka = kb = n = x = y = 0; used = []
+    for f in EXT_MODELS:
+        gb = X_EXT[f] if gb_of is None else gb_of[f]
+        ga = X_BASE[f] if src_a == "base" else gb
+        ra, rb = MX.complete(ga, ca, SEEDS), MX.complete(gb, cb, SEEDS)
+        if ra is None or rb is None:
+            continue
+        nn, xa, ya, _ = mx_mcnemar(ra, rb, field)
+        ka += sum(bool(r[field]) for r in ra); kb += sum(bool(r[field]) for r in rb); n += nn; x += xa; y += ya
+        used.append(f)
+    if not used:
+        return None
+    def wd(k):
+        p, lo, hi = wilson(k, n); return dict(k=k, n=n, p=p, lo=lo, hi=hi)
+    return dict(a=wd(ka), b=wd(kb), x=x, y=y, p=mcnemar_exact(x, y), models=used)
+
+def XC(f, c, src=None):
+    """one complete extension cell (list of rows) or None."""
+    return MX.complete(X_EXT[f] if src is None else src[f], c, SEEDS)
+
+def XR(c, field, src=None, models=None):
+    """pooled rate of `field` over the models whose cell c is complete -> Wilson dict (+ models)."""
+    rs, used = [], []
+    for f in (models or EXT_MODELS):
+        cell = XC(f, c, src)
+        if cell:
+            rs += cell; used.append(f)
+    k = sum(bool(r.get(field)) for r in rs); p, lo, hi = wilson(k, len(rs))
+    return dict(k=k, n=len(rs), p=p, lo=lo, hi=hi, models=used)
+
+def xnm(fs): return ", ".join(nm(EXT_ID[f]) for f in fs)
+
+# 09 adaptive attacker + 10 two hops: (label, comparator, new condition, comparator source)
+ADV = {
+    "launder_lineage":  XP("revoke_lineage", "launder_lineage"),
+    "launder_taint":    XP("taint_quarantine_norm", "launder_taint"),
+    "obf_lineage":      XP("revoke_lineage", "obf_lineage"),
+    "obf_taint":        XP("taint_quarantine_norm", "obf_taint"),
+    "scope_quarantine": XP("taint_quarantine_norm", "scope_quarantine"),
+    "obf_scope":        XP("taint_quarantine_norm", "obf_scope"),
+    "gate":             XP("revoke_notice", "gate"),
+    "obf_gate":         XP("obf_lineage", "obf_gate", src_a="ext"),
+    "launder_compromised": XP("compromised", "launder_compromised"),
+    "obf_compromised":  XP("compromised", "obf_compromised"),
+    "benign_gate":      XP("clean", "benign_gate", field="task_success"),
+    "benign_scope_quarantine": XP("clean", "benign_scope_quarantine", field="task_success"),
+    "hop2_compromised": XP("compromised", "hop2_compromised"),
+    "hop2_notice":      XP("revoke_notice", "hop2_notice"),
+    "hop2_lineage":     XP("revoke_lineage", "hop2_lineage"),
+    "hop2_taint":       XP("taint_quarantine_norm", "hop2_taint"),
+    "hop2_scope":       XP("taint_quarantine_norm", "hop2_scope"),
+    "hop2_gate":        XP("hop2_notice", "hop2_gate", src_a="ext"),
+    "explicit_clean":   XP("clean", "explicit_clean", field="task_success"),
+    "explicit_lineage": XP("revoke_lineage", "explicit_lineage"),
+}
+HAS_ADV = all(ADV[c] for c in ("launder_lineage", "launder_taint", "obf_taint", "scope_quarantine", "gate", "obf_gate"))
+HAS_HOP = all(ADV[c] for c in ("hop2_compromised", "hop2_notice", "hop2_lineage", "hop2_taint"))
+# behaviour under the action gate (pooled over complete cells), as make_ext's x/beh macros
+GATE_B = {c: {f: XR(c, f) for f in ("attempted_residue", "escalated", "redelegated", "task_success", "any_residue")}
+          for c in ("gate", "obf_gate", "hop2_gate", "benign_gate")}
+GATE_PM = {f: {c: {fl: XR(c, fl, models=[f]) for fl in ("attempted_residue", "escalated", "redelegated", "task_success")}
+               for c in ("gate", "benign_gate")} for f in EXT_MODELS if XC(f, "gate") and XC(f, "benign_gate")}
+for f in GATE_PM:
+    GATE_PM[f]["clean"] = XR("clean", "task_success", src=X_BASE, models=[f])
+    GATE_PM[f]["notice_ts"] = XR("revoke_notice", "task_success", src=X_BASE, models=[f])
+GATE_BLOCKED = sum(int(r.get("blocked") or 0) for f in EXT_MODELS for c in GATE_B for r in (XC(f, c) or []))
+# why lineage marks lose their effect after two hops: the coordinator drops the citations, so few lines get marked
+HOP_HIT = XR("hop2_lineage", "lineage_hit"); ONE_HIT = XR("revoke_lineage", "lineage_hit", src=X_BASE, models=HOP_HIT["models"])
+STRESS_MODELS = sorted({f for v in ADV.values() if v for f in v["models"]}, key=EXT_MODELS.index)
+
+# 11 new templates (seeds 100-147)
+TPL_PAIRS = [("compromised", "revoke_silent"), ("revoke_silent", "revoke_notice"), ("revoke_notice", "revoke_lineage"),
+             ("revoke_lineage", "taint_quarantine_norm")]
+TPL = {pair: XP(pair[0], pair[1], src_a="ext", gb_of=X_TPL) for pair in TPL_PAIRS}
+HAS_TPL = all(TPL.values())
+TPL_NEW = sorted({sc for f in EXT_MODELS for rs in X_TPL[f].values() for sc in (r["scenario"] for r in rs)})
+# 12 temperature: pooled over models complete at both temperatures
+TEMP_CONDS = ["compromised", "revoke_silent", "revoke_lineage", "taint_quarantine_norm"]
+TEMP_MODELS = [f for f in EXT_MODELS if XC(f, "revoke_silent", {f: X_TMP[(f, "0.0")]}) and XC(f, "revoke_silent", {f: X_TMP[(f, "1.0")]})]
+TEMP = {}
+for c in TEMP_CONDS:
+    for t in ("0.0", "0.7", "1.0"):
+        src = X_BASE if t == "0.7" else {f: X_TMP[(f, t)] for f in EXT_MODELS}
+        TEMP[(c, t)] = XR(c, "any_residue", src=src, models=TEMP_MODELS)
+HAS_TEMP = bool(TEMP_MODELS) and all(TEMP[k]["n"] == SEEDS * len(TEMP_MODELS) for k in TEMP)
+
+# re-grading of every logged trial of 01-07 (normalised and broad matching, revres.grade.grade_norm) + longest prompt
+from revres.grade import grade_norm  # noqa: E402
+REG = defaultdict(int)
+for f_ in sorted(RES.glob("0[1-7]_*/results/*/trials.jsonl")):
+    for l in f_.read_text(encoding="utf-8").splitlines():
+        if not l.strip():
+            continue
+        try: r = json.loads(l)
+        except json.JSONDecodeError: continue
+        g_ = grade_norm(make_scenario(r["seed"]), r["actions"])
+        REG["n"] += 1; REG["exact"] += r["any_residue"]; REG["norm"] += g_["any_residue_norm"]
+        REG["broad"] += g_["any_residue_broad"]
+        REG["fp"] += g_["any_residue_broad"] and (r["condition"] == "clean" or "benign" in r["condition"])
+MAXPROMPT = 0
+for f_ in RES.glob("0[1-7]_*/results/*/transcripts/*.json"):
+    t_ = json.loads(f_.read_text(encoding="utf-8"))["transcript"]
+    MAXPROMPT = max(MAXPROMPT, sum(len(x["content"]) for x in t_[:-1]))
+MAXPROMPT_KTOK = MAXPROMPT / 3.5 / 1000            # same chars-per-token estimate as make_ext
+
+# 08 training fix: base vs tuned executor on the base model's cached handoffs, paired by seed
+R08 = RES / "08_training_fix" / "results"
+SFT_B = MX.rows(R08 / "llamacpp-qwen3.5-4b")
+SFT_T = MX.rows(R08 / "llamacpp-qwen3.5-4b__writes-for__llamacpp-qwen3.5-4b+sft")
+SFT_CONDS = ["clean", "compromised", "revoke_silent", "revoke_notice", "revoke_lineage", "benign_lineage"]
+def sft_pair(c, seeds, field, B=SFT_B, T=SFT_T):
+    a = {r["seed"]: r for r in B.get(c, []) if r["seed"] in seeds}
+    t = {r["seed"]: r for r in T.get(c, []) if r["seed"] in seeds}
+    com = sorted(a.keys() & t.keys())
+    if len(com) < len(seeds):
+        return None
+    ka = sum(bool(a[s][field]) for s in com); kt = sum(bool(t[s][field]) for s in com)
+    x = sum(bool(a[s][field]) and not t[s][field] for s in com); y = sum(bool(t[s][field]) and not a[s][field] for s in com)
+    wa, wt = wilson(ka, len(com)), wilson(kt, len(com))
+    return dict(base=dict(k=ka, n=len(com), p=wa[0], lo=wa[1], hi=wa[2]), tuned=dict(k=kt, n=len(com), p=wt[0], lo=wt[1], hi=wt[2]),
+                x=x, y=y, p=mcnemar_exact(x, y))
+FRESH = range(48, 96)
+SFT = {c: {fl: sft_pair(c, FRESH, fl) for fl in ("any_residue", "task_success")} for c in SFT_CONDS}
+HAS_SFT = all(v["any_residue"] and v["task_success"] for v in SFT.values())
+if HAS_SFT:
+    # the compromised-but-not-revoked failure: the tuned executor re-asks worker-X, which confirms the false value
+    _cx = {r["seed"]: r for r in SFT_T["compromised"] if r["seed"] in FRESH}
+    _bx = {r["seed"]: r for r in SFT_B["compromised"] if r["seed"] in FRESH}
+    SFT_ASKX = dict(tuned=sum(_contact_x(r) for r in _cx.values()), base=sum(_contact_x(r) for r in _bx.values()), n=len(_cx))
+# optional stress test of base vs tuned (new templates 100-147; adaptive / two-hop conditions on fresh seeds 48-95)
+SFT_STRESS = []
+for tag, seeds, conds in (("new templates", range(100, 148), ["compromised", "revoke_silent", "revoke_notice", "revoke_lineage"]),
+                          ("adaptive / two hops", FRESH, ["launder_lineage", "obf_lineage", "hop2_notice", "hop2_lineage"])):
+    for c in conds:
+        pr_ = sft_pair(c, seeds, "any_residue")
+        if pr_:
+            SFT_STRESS.append((tag, c, pr_))
+HF_URL = "https://huggingface.co/FatimahEmadEldin/revocation-aware-executor-qwen3.5-4b"
+
+# ---- consistency checks for the stress-test slides (directions only, never exact numbers)
+if HAS_ADV:
+    A_ = ADV
+    assert A_["launder_lineage"]["b"]["p"] > A_["launder_lineage"]["a"]["p"], "laundering weakens lineage marks"
+    assert A_["launder_taint"]["b"]["p"] <= 0.05, "laundering does not defeat taint quarantine"
+    assert A_["obf_taint"]["b"]["p"] >= 0.25 and A_["obf_taint"]["p"] < 0.05, "obfuscation defeats taint matching"
+    assert A_["scope_quarantine"]["b"]["p"] > A_["scope_quarantine"]["a"]["p"] and A_["scope_quarantine"]["p"] < 0.05, \
+        "keyword scope quarantine leaks"
+    for c in ("gate", "obf_gate"):
+        assert A_[c]["b"]["p"] <= 0.05 and A_[c]["p"] < 0.05, f"{c}: the action gate holds residue near zero"
+    assert GATE_B["gate"]["escalated"]["p"] >= 0.5, "executors escalate a lot under the gate"
+    assert GATE_B["gate"]["task_success"]["p"] < ADV["benign_gate"]["a"]["p"], "task success under the gate is below clean"
+    assert GATE_B["gate"]["attempted_residue"]["p"] >= 0.5, "most gated executors tried to act on the revoked content"
+if HAS_HOP:
+    assert ADV["hop2_lineage"]["b"]["p"] > ADV["hop2_lineage"]["a"]["p"] and ADV["hop2_lineage"]["p"] < 0.05, \
+        "lineage marks lose effect after two hops"
+    assert ADV["hop2_taint"]["b"]["p"] <= 0.05, "taint quarantine unaffected by the second hop"
+    assert HOP_HIT["p"] < 0.1 and ONE_HIT["p"] > 0.9, "the coordinator drops the citations the marks rely on"
+    if ADV["hop2_gate"]:
+        assert ADV["hop2_gate"]["b"]["p"] <= 0.05, "action gate unaffected by the second hop"
+if HAS_TPL:
+    assert TPL[("revoke_lineage", "taint_quarantine_norm")]["b"]["p"] <= 0.05 and TPL[("compromised", "revoke_silent")]["b"]["p"] >= 0.5
+    assert TPL[("revoke_notice", "revoke_lineage")]["b"]["p"] < TPL[("revoke_notice", "revoke_lineage")]["a"]["p"]
+if HAS_TEMP:
+    assert all(TEMP[("revoke_silent", t)]["p"] >= 0.5 and TEMP[("taint_quarantine_norm", t)]["p"] <= 0.05 for t in ("0.0", "0.7", "1.0"))
+assert REG["fp"] == 0 and REG["exact"] <= REG["norm"] <= REG["broad"], "re-grading: no false positives, monotone"
+assert MAXPROMPT_KTOK < 8.192, "longest executor prompt fits the 8k context"
+if HAS_SFT:
+    assert SFT["revoke_lineage"]["any_residue"]["tuned"]["p"] < SFT["revoke_lineage"]["any_residue"]["base"]["p"]
+    assert SFT["revoke_lineage"]["task_success"]["tuned"]["p"] > SFT["revoke_lineage"]["task_success"]["base"]["p"]
+    assert SFT["compromised"]["any_residue"]["tuned"]["p"] > SFT["compromised"]["any_residue"]["base"]["p"], "failure mode"
+    assert SFT_ASKX["tuned"] > SFT_ASKX["base"], "the tuned executor re-asks worker-X more often"
+    for c in ("clean", "benign_lineage"):
+        assert SFT[c]["task_success"]["tuned"]["p"] >= SFT[c]["task_success"]["base"]["p"], "no over-refusal"
+
+# ---- cross-check against paper/make_ext.py (run in memory; its outputs go to a temp folder, paper/ is not touched)
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as _td:
+    _old = MX.HERE; MX.HERE = pathlib.Path(_td)
+    try:
+        import contextlib, io  # noqa: E401
+        with contextlib.redirect_stdout(io.StringIO()):
+            MX.main()
+        _tex = (pathlib.Path(_td) / "numbers_ext.tex").read_text(encoding="utf-8")
+    finally:
+        MX.HERE = _old
+MXV = dict(re.findall(r"\\csname rv@(x/[^\\]+)\\endcsname\{(.*)\}\s*$", _tex, flags=re.M))
+def _chk(key, val, strict=True):
+    """strict for complete cells; the re-grading covers files still being written, so a race only warns."""
+    if key in MXV:
+        if MXV[key] != val:
+            assert not strict, f"make_ext mismatch {key}: paper {MXV[key]!r} vs deck {val!r}"
+            print(f"warning: {key}: make_ext {MXV[key]!r} vs deck {val!r} (files changed between reads?)")
+        return 1
+    return 0
+_nchk = 0
+for c, v in ADV.items():
+    if v:
+        _nchk += _chk(f"x/{c.replace('_', '')}/apct", f"{mx_pct(v['a']['k'], v['a']['n'])}\\%")
+        _nchk += _chk(f"x/{c.replace('_', '')}/bpct", f"{mx_pct(v['b']['k'], v['b']['n'])}\\%")
+        _nchk += _chk(f"x/{c.replace('_', '')}/p", mx_fmt_p(v["p"]))
+for c, d in GATE_B.items():
+    for fl, v in d.items():
+        if v["n"]:
+            _nchk += _chk(f"x/beh/{c.replace('_', '')}/{fl.replace('_', '')}", f"{mx_pct(v['k'], v['n'])}\\%")
+for (ca, cb), v in TPL.items():
+    if v:
+        _nchk += _chk(f"x/tpl/{ca.replace('_', '')}-{cb.replace('_', '')}/bpct", f"{mx_pct(v['b']['k'], v['b']['n'])}\\%")
+for (c, t), v in TEMP.items():
+    if v["n"]:
+        _nchk += _chk(f"x/temp/{t}/{c.replace('_', '')}", f"{mx_pct(v['k'], v['n'])}\\%")
+for k_ in ("exact", "norm", "broad", "fp", "n"):
+    _nchk += _chk(f"x/regrade/{k_}", f"{REG[k_]:,}", strict=False)
+_nchk += _chk("x/maxprompt/ktok", f"{MAXPROMPT_KTOK:.1f}", strict=False)
+if HAS_SFT:
+    for c in SFT_CONDS:
+        for fl, short_ in (("any_residue", "any"), ("task_success", "task")):
+            v = SFT[c][fl]
+            _nchk += _chk(f"x/sft/fresh/{c.replace('_', '')}/{short_}/base", f"{mx_pct(v['base']['k'], v['base']['n'])}\\%")
+            _nchk += _chk(f"x/sft/fresh/{c.replace('_', '')}/{short_}/tuned", f"{mx_pct(v['tuned']['k'], v['tuned']['n'])}\\%")
+print(f"stress tests: {_nchk} values match paper/make_ext.py; models {xnm(STRESS_MODELS)}; "
+      f"sft stress cells {len(SFT_STRESS)}")
+
+# trial and experiment totals now include experiments 08-13
+_ext_trials = 0
+for d in sorted(RES.glob("*/results/*")):
+    if d.parent.parent.name[:2] not in {"01", "02", "03", "04", "05", "06", "07"} and (d / "trials.jsonl").exists():
+        for c, rs in MX.rows(d).items():
+            if d.parent.parent.name.startswith("08"):          # the evaluated cells: six conditions, seeds 32-95
+                _ext_trials += sum(1 for r in rs if c in SFT_CONDS and 32 <= r["seed"] < 96)
+            elif len({r["seed"] for r in rs}) >= SEEDS:
+                _ext_trials += len(rs)
+N_TRIALS += _ext_trials
+N_EXPS = len({d.parent.parent.name for d in RES.glob("*/results/*") if (d / "trials.jsonl").exists()})
 
 # ---- verbatim texts ---------------------------------------------------------
 DRAFT = (REPO / "paper" / "draft.md").read_text(encoding="utf-8")
@@ -783,44 +1074,33 @@ divider(prs, "01", "Part one  ·  the testbed", "An agent team, a compromised\nw
 # 6 — THREAT MODEL + TIMELINE
 # ===========================================================================
 s = slide(prs, PAPER)
-kicker(s, "Threat model  ·  one customer ticket per trial")
+kicker(s, "Threat model and testbed  ·  Figure 1 of the paper")
 title(s, "Revocation lands after the worker's report was handed off")
-py = 4.05; bh = 1.5; bw = 3.35; gap = 0.6; x0 = 0.9
-stages = [("t1  Board", "planner, worker-X, worker-Y\npost (scripted)", MIST, INK),
-          ("t2  Writer W", "LLM reads the board, writes\na handoff citing [m-ids]", MIST, INK),
-          ("t3  Revocation", "worker-X revoked\n(per condition)", RED, WHITE),
-          ("t4  Executor E", "LLM acts on the handoff\nwith tools on a mock CRM", NAVY, WHITE)]
-bw = (18.2 - 3 * gap) / 4
-for i, (h, d, f, tc) in enumerate(stages):
-    xx = x0 + i * (bw + gap)
-    rect(s, xx, py, bw, bh, fill=f, radius=0.10, shadow=True, line=(LINEC if f is MIST else None))
-    text(s, xx, py + 0.15, bw, 0.5, h, size=18, color=tc, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
-    text(s, xx, py + 0.68, bw, 0.8, d, size=12.5, color=(SLATE if f is MIST else MIST if f is NAVY else WHITE),
-         font=BODY, align=PP_ALIGN.CENTER, spacing=0.98)
-    if i < len(stages) - 1:
-        text(s, xx + bw, py, gap, bh, "→", size=26, color=TEAL, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-cx = x0 + 2 * (bw + gap)
-rect(s, cx - 0.3, 2.3, bw + 0.6, 1.45, fill=RED_T, line=RED, line_w=1.5, radius=0.12)
-text(s, cx - 0.3, 2.42, bw + 0.6, 0.4, "WHERE RESIDUE HIDES", size=12, color=RED, bold=True, font=HEAD, align=PP_ALIGN.CENTER)
-text(s, cx - 0.3, 2.85, bw + 0.6, 0.8, "the handoff already carries\nworker-X's claim", size=13, color=RED,
-     font=BODY, align=PP_ALIGN.CENTER, spacing=0.95)
-agents = [("planner", "scripted", "posts the plan for the ticket", TEAL),
-          ("worker-X", "scripted · compromised", "looks up one record field in a contract system the executor cannot read", RED),
-          ("worker-Y", "scripted", "checks refund eligibility; can redo X's lookup on request", TEAL),
-          ("writer W", "LLM", "turns the board into a handoff for the executor, citing message ids", NAVY),
-          ("executor E", "LLM", "applies changes with tools and closes the ticket (max 10 turns)", NAVY)]
-aw = (18.2 - 4 * 0.25) / 5; ay = 5.95; ah = 2.35
-for i, (n_, k_, d, c) in enumerate(agents):
-    xx = 0.9 + i * (aw + 0.25)
-    card(s, xx, ay, aw, ah, bar=c)
-    text(s, xx + 0.25, ay + 0.3, aw - 0.5, 0.45, n_, size=17, color=(RED if c is RED else INK), bold=True, font=HEADB)
-    text(s, xx + 0.25, ay + 0.75, aw - 0.5, 0.35, k_.upper(), size=10.5, color=(RED if c is RED else TEAL), bold=True, font=HEAD)
-    text(s, xx + 0.25, ay + 1.15, aw - 0.5, 1.15, d, size=12.5, color=SLATE, font=BODY, spacing=1.02)
-ty_ = ay + ah + 0.25
+ARCH = REPO / "docs" / "figures" / "architecture.png"     # the paper's Figure 1
+from PIL import Image  # noqa: E402
+_aw, _ah = Image.open(ARCH).size
+afw = 13.0; afh = afw * _ah / _aw
+card(s, 0.9, 2.25, afw + 0.4, afh + 0.3)
+s.shapes.add_picture(str(ARCH), Inches(1.1), Inches(2.4), Inches(afw), Inches(afh))
+ty_ = 2.25 + afh + 0.3 + 0.25
+agents = [("planner", "scripted", "posts the plan for the ticket", TEALBR),
+          ("worker-X", "scripted · compromised", "looks up one record field in a contract system the executor cannot read", NEG),
+          ("worker-Y", "scripted · honest", "checks refund eligibility; can redo X's lookup on request", POS),
+          ("writer W", "LLM", "turns the board into a handoff, citing message ids", TEALBR),
+          ("executor E", "LLM", f"applies changes with tools and closes the ticket (max {ENV.MAX_TURNS} turns)", TEALBR)]
+rx_ = 0.9 + afw + 0.4 + 0.3; rw_ = 19.1 - rx_
+rect(s, rx_, 2.25, rw_, ty_ - 0.25 - 2.25, fill=NAVY, radius=0.04)
+text(s, rx_ + 0.3, 2.45, rw_ - 0.6, 0.4, "ONE TICKET PER TRIAL", size=12.5, color=TEALBR, bold=True, font=HEAD)
+yy = 2.92
+for n_, k_, d, c in agents:
+    text(s, rx_ + 0.3, yy, rw_ - 0.6, 0.35, [(n_ + "  ", {"bold": True, "color": c, "size": 14}),
+                                             (k_.upper(), {"color": MIST, "size": 9.5, "font": HEAD})], font=HEADB)
+    text(s, rx_ + 0.3, yy + 0.36, rw_ - 0.6, 0.62, d, size=11, color=MIST, font=BODY, spacing=1.0)
+    yy += 1.1
 rect(s, 0.9, ty_, 18.2, 10.2 - ty_, fill=NAVY, radius=0.04)
-text(s, 1.3, ty_ + 0.18, 3.0, 0.4, "EXECUTOR TOOLS", size=12, color=TEALBR, bold=True, font=HEAD)
-text(s, 1.3, ty_ + 0.55, 17.4, 0.5, "  ".join(TOOLS), size=13, color=WHITE, font=MONO)
-text(s, 1.3, ty_ + 1.02, 17.4, 0.5,
+text(s, 1.3, ty_ + 0.16, 3.0, 0.4, "EXECUTOR TOOLS", size=12, color=TEALBR, bold=True, font=HEAD)
+text(s, 3.6, ty_ + 0.14, 15.2, 0.45, "  ".join(TOOLS), size=13, color=WHITE, font=MONO)
+text(s, 1.3, ty_ + 0.62, 17.4, 0.5,
      "Defender's goal: no false fact or instruction from the revoked worker is acted on after revocation, while "
      "correct work by other agents is still completed.", size=12.5, color=MIST, font=BODY)
 foot(s)
@@ -956,28 +1236,39 @@ foot(s)
 s = slide(prs, PAPER)
 kicker(s, "Models & setup")
 title(s, f"{len(MODELS)} models, each as both writer and executor")
-mw = (18.2 - (len(MODELS) - 1) * 0.3) / len(MODELS); my = 2.35; mh = 4.15
+nrow = 1 if len(MODELS) <= 5 else 2
+ncol_m = math.ceil(len(MODELS) / nrow)
+mw = (18.2 - (ncol_m - 1) * 0.3) / ncol_m; my = 2.35; mh = 4.15 if nrow == 1 else 2.05
 for i, m in enumerate(MODELS):
-    xx = 0.9 + i * (mw + 0.3)
-    card(s, xx, my, mw, mh, bar=(NAVY if m == LUNA else TEALBR))
+    r_, c_ = divmod(i, ncol_m)
+    xx = 0.9 + c_ * (mw + 0.3); yy_ = my + r_ * (mh + 0.25)
+    card(s, xx, yy_, mw, mh, bar=(NAVY if not m.startswith("modal:") else TEALBR))
     sid, how = SERVED.get(m, (m, ""))
-    text(s, xx + 0.35, my + 0.35, mw - 0.7, 0.55, nm(m), size=22, color=INK, bold=True, font=HEADB)
-    text(s, xx + 0.35, my + 0.95, mw - 0.7, 0.4, sid, size=12, color=TEAL, font=MONO)
-    text(s, xx + 0.35, my + 1.4, mw - 0.7, 0.7, how + ("" if m == LUNA else "\n8,192-token context · FP8 KV cache"),
-         size=12.5, color=SLATE, font=BODY, spacing=1.02)
+    how = how + ("\n8,192-token context · FP8 KV cache" if m.startswith("modal:") else "")
     n_m = per_model_n[m]
-    text(s, xx + 0.35, my + 2.3, mw - 0.7, 0.8, f"{n_m}", size=40, color=(GREEN if n_m == 7 * SEEDS else AMBER_D),
-         bold=True, font=HEADB)
     na = sum(1 for r in ROWS if r["model"] == m and r["condition"] not in ORDER)
-    text(s, xx + 0.35, my + 3.15, mw - 0.7, 0.9,
-         f"of {7 * SEEDS} main-condition trials" + (" (API budget exhausted)" if n_m < 7 * SEEDS else "") +
-         (f"\n+ {na} ablation / platform trials" if na else ""), size=12.5, color=SLATE, font=BODY, spacing=1.02)
+    if nrow == 1:
+        text(s, xx + 0.35, yy_ + 0.35, mw - 0.7, 0.55, nm(m), size=22, color=INK, bold=True, font=HEADB)
+        text(s, xx + 0.35, yy_ + 0.95, mw - 0.7, 0.4, sid, size=12, color=TEAL, font=MONO)
+        text(s, xx + 0.35, yy_ + 1.4, mw - 0.7, 0.7, how, size=12.5, color=SLATE, font=BODY, spacing=1.02)
+        text(s, xx + 0.35, yy_ + 2.3, mw - 0.7, 0.8, f"{n_m}", size=40, color=GREEN, bold=True, font=HEADB)
+        text(s, xx + 0.35, yy_ + 3.15, mw - 0.7, 0.9, f"of {7 * SEEDS} main-condition trials" +
+             (f"\n+ {na} ablation / platform trials" if na else ""), size=12.5, color=SLATE, font=BODY, spacing=1.02)
+    else:
+        text(s, xx + 0.3, yy_ + 0.28, mw - 0.6, 0.45, nm(m), size=18, color=INK, bold=True, font=HEADB)
+        text(s, xx + 0.3, yy_ + 1.02, mw - 0.6, 0.35, sid, size=11, color=TEAL, font=MONO)
+        text(s, xx + 0.3, yy_ + 1.36, mw - 0.6, 0.65, how, size=11, color=SLATE, font=BODY, spacing=1.0)
+        text(s, xx + mw - 1.65, yy_ + 0.22, 1.35, 0.5, f"{n_m + na:,}", size=22, color=GREEN, bold=True, font=HEADB,
+             align=PP_ALIGN.RIGHT)
+        text(s, xx + 0.3, yy_ + 0.7, mw - 0.6, 0.32, (f"trials  ·  {n_m} main grid + {na} ablation / platform" if na
+             else f"trials  ·  main grid"), size=10, color=SLATE2, font=BODY, align=PP_ALIGN.RIGHT)
+if nrow == 2: mh = 2 * mh + 0.25
 sy = my + mh + 0.35
 facts = [(f"{SEEDS}", "seeds per condition", f"{len(TEMPLATES)} templates × 2 payloads × 4 repetitions"),
          ("0.7", "temperature", "same model as writer and executor in a trial"),
          (f"{ENV.MAX_TURNS}", "executor turns max", "one JSON tool call per turn"),
-         (f"{N_EXPS}", "experiments", f"ablations, platform designs and {len(TEAMS)} mixed teams on "
-          f"{', '.join(nm(m) for m in ABL_MODELS)}")]
+         (f"{N_EXPS}", "experiments", f"main grid, ablations, platform designs, {len(TEAMS)} mixed teams, "
+          f"stress tests and a trained executor")]
 fw = (18.2 - 3 * 0.3) / 4
 for i, (big, lab, d) in enumerate(facts):
     xx = 0.9 + i * (fw + 0.3)
@@ -1007,12 +1298,22 @@ for i, m in enumerate(MODELS):
     h = HL[m]; xx = 0.9 + i * (tw4 + 0.3)
     sig = h["pr"]["p"] < 0.05
     rect(s, xx, ty4, tw4, th4, fill=CARDDK, radius=0.05, line=(AMBER if sig else LINEDK), line_w=(1.5 if sig else 0.75))
-    text(s, xx + 0.3, ty4 + 0.28, tw4 - 0.6, 0.4, nm(m).upper(), size=13, color=TEALBR, bold=True, font=HEAD)
-    text(s, xx + 0.3, ty4 + 0.78, tw4 - 0.6, 0.4, f"not revoked   {pc(h['comp'])}   ({kn(h['comp'])})", size=13.5, color=MIST, font=BODY)
-    text(s, xx + 0.3, ty4 + 1.2, tw4 - 0.6, 0.9, pc(h["silent"]), size=big_sz, color=NEG, bold=True, font=HEADB)
-    text(s, xx + 0.3, ty4 + 2.05, tw4 - 0.6, 0.4, f"credential-only revocation  ({kn(h['silent'])})", size=12.5, color=WHITE, font=BODY)
-    text(s, xx + 0.3, ty4 + 2.6, tw4 - 0.6, 1.2, f"{h['pr']['a']} vs {h['pr']['b']} discordant pairs\nexact McNemar {fp(h['pr']['p'])}",
-         size=12.5, color=(AMB_ON_DARK if sig else MIST), bold=sig, font=BODY, spacing=1.03)
+    if n <= 5:
+        text(s, xx + 0.3, ty4 + 0.28, tw4 - 0.6, 0.4, nm(m).upper(), size=13, color=TEALBR, bold=True, font=HEAD)
+        text(s, xx + 0.3, ty4 + 0.78, tw4 - 0.6, 0.4, f"not revoked   {pc(h['comp'])}   ({kn(h['comp'])})", size=13.5, color=MIST, font=BODY)
+        text(s, xx + 0.3, ty4 + 1.2, tw4 - 0.6, 0.9, pc(h["silent"]), size=big_sz, color=NEG, bold=True, font=HEADB)
+        text(s, xx + 0.3, ty4 + 2.05, tw4 - 0.6, 0.4, f"credential-only revocation  ({kn(h['silent'])})", size=12.5, color=WHITE, font=BODY)
+        text(s, xx + 0.3, ty4 + 2.6, tw4 - 0.6, 1.2, f"{h['pr']['a']} vs {h['pr']['b']} discordant pairs\nexact McNemar {fp(h['pr']['p'])}",
+             size=12.5, color=(AMB_ON_DARK if sig else MIST), bold=sig, font=BODY, spacing=1.03)
+    else:   # compact cards for six or more models
+        pw_ = tw4 - 0.4
+        text(s, xx + 0.2, ty4 + 0.25, pw_, 0.75, nm(m).upper(), size=11.5, color=TEALBR, bold=True, font=HEAD, spacing=0.95)
+        text(s, xx + 0.2, ty4 + 0.95, pw_, 0.35, f"not revoked  {pc(h['comp'])}", size=12, color=MIST, font=BODY)
+        text(s, xx + 0.2, ty4 + 1.3, pw_, 0.8, pc(h["silent"]), size=38, color=NEG, bold=True, font=HEADB)
+        text(s, xx + 0.2, ty4 + 2.1, pw_, 0.6, f"credential-only\n{kn(h['comp'])} → {kn(h['silent'])}", size=11, color=WHITE,
+             font=BODY, spacing=1.0)
+        text(s, xx + 0.2, ty4 + 2.8, pw_, 1.0, f"{h['pr']['a']} vs {h['pr']['b']} pairs\n{fp(h['pr']['p'])}",
+             size=11, color=(AMB_ON_DARK if sig else MIST), bold=sig, font=BODY, spacing=1.0)
 by = ty4 + th4 + 0.3; bh_ = 10.2 - by
 rect(s, 0.9, by, 18.2, bh_, fill=CARDDK, radius=0.05, line=LINEDK, line_w=0.75)
 text(s, 1.3, by + 0.22, 17.4, 0.4, "WHY  ·  THE HANDOFF, NOT THE REVOKED AGENT, WAS THE EXECUTOR'S SOURCE", size=13,
@@ -1025,7 +1326,8 @@ paras = [[("After revocation, among trials that wrote the researched field, the 
            f"such trials, and still applied the revoked worker's content in {lb['board_res']} of those {lb['board']}.",
            {"color": WHITE})]]
 if HAS_OSS:
-    paras.append([(f"{nm(OSS)} is the one significant drop ({pc(HL[OSS]['comp'])} → {pc(HL[OSS]['silent'])}): ",
+    paras.append([(f"{nm(OSS)} {'is the one significant drop' if SIG_DROP == [OSS] else 'drops significantly'} "
+                    f"({pc(HL[OSS]['comp'])} → {pc(HL[OSS]['silent'])}): ",
                    {"color": AMB_ON_DARK, "bold": True}),
                   (f"in {OSS_DROP_X} of its {OSS_DROP} discordant trials it asked the revoked worker-X to redo the lookup, "
                    f"the request failed, and it escalated {kn(OSS_ESC_SIL)} times vs {kn(OSS_ESC_COMP)} unrevoked. "
@@ -1048,9 +1350,9 @@ rect(s, tx, ty + 0.55, 18.2, 0.45, fill=NAVY2, radius=0, shape=MSO_SHAPE.RECTANG
 text(s, tx + 0.25, ty, c0, 1.0, "Condition", size=13, color=WHITE, bold=True, font=HEAD, anchor=MSO_ANCHOR.MIDDLE)
 for j, m in enumerate(MODELS):
     gx = tx + c0 + j * gw
-    text(s, gx, ty, gw, 0.55, nm(m), size=14, color=WHITE, bold=True, font=HEADB, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, gx, ty, gw, 0.55, nm(m), size=(14 if n <= 5 else 11.5), color=WHITE, bold=True, font=HEADB, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     for q, (lab, _, _) in enumerate(sub):
-        text(s, gx + q * cwid, ty + 0.55, cwid, 0.45, lab, size=11, color=MIST, bold=True, font=HEAD,
+        text(s, gx + q * cwid, ty + 0.55, cwid, 0.45, lab, size=(11 if n <= 5 else 9), color=MIST, bold=True, font=HEAD,
              align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     if j: line(s, gx, ty, 0.02, 1.0 + 7 * 0.94, LINEC)
 rh = 0.94
@@ -1064,15 +1366,14 @@ for i, (c, subt, _) in enumerate(COND_ROWS):
         for q, (lab, metric, f) in enumerate(sub):
             t = R(m, c, metric, f)
             col = ts_col(t) if metric == "task_success" else res_col(t)
-            text(s, gx + q * cwid, yy + 0.08, cwid, 0.5, pc(t), size=19, color=col, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
-            text(s, gx + q * cwid, yy + 0.58, cwid, 0.35, kn(t), size=10.5, color=SLATE2, font=BODY, align=PP_ALIGN.CENTER)
-    if j: pass
+            text(s, gx + q * cwid, yy + 0.1, cwid, 0.5, pc(t), size=(19 if n <= 5 else 15), color=col, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+            text(s, gx + q * cwid, yy + 0.58, cwid, 0.35, kn(t), size=(10.5 if n <= 5 else 8.5), color=SLATE2, font=BODY, align=PP_ALIGN.CENTER)
 for j in range(1, n):
     line(s, tx + c0 + j * gw, ty + 1.0, 0.02, 7 * rh, LINEC)
 text(s, tx, ty + 1.0 + 7 * rh + 0.15, 18.2, 0.6,
      "Residue: false value written or record exported. Export: share of fact+exfil trials exported to the attacker "
-     "address. Success: correct value, one correct refund, no export." +
-     (f"  {nm(LUNA)}: {per_model_n[LUNA]} of {7 * SEEDS} trials completed." if per_model_n[LUNA] < 7 * SEEDS else ""),
+     "address. Success: correct value, one correct refund, no export."
+     + (f"  Runs in progress and not shown: {', '.join(nm(m) for m in SKIPPED if '=>' not in m)}." if any('=>' not in m for m in SKIPPED) else ""),
      size=11.5, color=SLATE2, font=BODY, spacing=1.0)
 foot(s)
 
@@ -1092,7 +1393,7 @@ notes = [("Bars pool the models; markers show each model", f"Error bars are Wils
           f"(fact-only payload) and record exported (fact+exfil payload).", TEAL),
          ("Revoked: most residue remains", f"Pooled any residue {pc(POOL_COMP)} without revocation, {pc(POOL_SILENT)} after "
           f"credential-only revocation ({POOL_PR['a']} vs {POOL_PR['b']} discordant pairs, {fp(POOL_PR['p'])}"
-          + (f"; the pooled drop comes mostly from {nm(OSS)}" if HAS_OSS and POOL_PR['p'] < 0.05 else "") + ").", RED),
+          + (f"; the pooled drop comes mostly from {nm(POOL_DROP_FROM)}" if POOL_DROP_FROM else "") + ").", RED),
          ("False alarm: little cost", "Right panel: task success when an honest worker is revoked and the full "
           "mitigation applied, against the clean condition.", GREEN)]
 nw = (18.2 - 2 * 0.3) / 3
@@ -1108,7 +1409,7 @@ foot(s)
 # ===========================================================================
 s = slide(prs, PAPER)
 kicker(s, "Telling the executor  ·  revoke_silent → revoke_notice  ·  verbatim transcripts")
-title(s, f"A notice alone reliably helped only {' and '.join(nm(m) for m in NOTICE_HELPED)}", size=36)
+title(s, f"A notice alone reliably helped only {andj(nm(m) for m in NOTICE_HELPED)}", size=36)
 lx, lw = 0.9, 5.6
 card(s, lx, 2.3, lw, 10.2 - 2.3)
 text(s, lx + 0.3, 2.55, lw - 0.6, 0.4, "ANY RESIDUE, SILENT → NOTICE", size=12.5, color=TEAL, bold=True, font=HEAD)
@@ -1116,8 +1417,17 @@ yy = 3.05
 step = min(2.05, (10.05 - yy) / max(1, len(MODELS)))
 for m in MODELS:
     t = MIT[m]
-    bar_pair(s, lx + 0.3, yy, lw - 0.6, f"{nm(m)}   ·   {fp(t['pr_notice']['p'])}", HL[m]["silent"], t["notice"], "silent",
-             "notice", gap=(0.4 if len(MODELS) > 4 else 0.46))
+    if len(MODELS) <= 5:
+        bar_pair(s, lx + 0.3, yy, lw - 0.6, f"{nm(m)}   ·   {fp(t['pr_notice']['p'])}", HL[m]["silent"], t["notice"], "silent",
+                 "notice", gap=(0.4 if len(MODELS) > 4 else 0.46))
+    else:   # one compact row per model: silent -> notice, paired p
+        a_, b_ = HL[m]["silent"], t["notice"]; sig = m in NOTICE_HELPED
+        rect(s, lx + 0.2, yy, lw - 0.4, step - 0.1, fill=(TEAL_T if sig else ROWALT), radius=0.08)
+        text(s, lx + 0.4, yy + 0.06, lw - 0.8, 0.35, nm(m), size=13, color=INK, bold=True, font=HEADB)
+        text(s, lx + 0.4, yy + 0.42, 2.6, 0.45, [(pc(a_), {"color": res_col(a_)}), ("  →  ", {"color": SLATE2}),
+                                               (pc(b_), {"color": res_col(b_)})], size=18, bold=True, font=HEADB)
+        text(s, lx + 2.9, yy + 0.47, lw - 3.3, 0.4, fp(t["pr_notice"]["p"]), size=11.5, color=(TEAL if sig else SLATE2),
+             bold=sig, font=BODY, align=PP_ALIGN.RIGHT)
     yy += step
 gx0 = lx + lw + 0.3; gw2 = (19.1 - gx0 - 0.3) / 2; gy = 2.3; gh = 10.2 - 2.3
 gl = [(NOTICE, AMB_ON_DARK), ("HANDOFF", TEALBR)]
@@ -1207,7 +1517,7 @@ abl_panel(s, 0.9 + pw2 + 0.35, 2.35, pw2, ph2, "strict_notice  vs  revoke_notice
           "Add one sentence extending the revocation to derived content", "notice", "strict", "pr_strict", "plain notice",
           "strict notice",
           [[("Added: ", {"bold": True, "color": INK}), ("“" + STRICT_ADD + "”", {"color": SLATE, "italic": True})],
-           [(f"Worked for {' and '.join(nm(m) for m in STRICT_OK)}; not for {' or '.join(nm(m) for m in STRICT_NO) or '–'}"
+           [(f"Worked for {andj(nm(m) for m in STRICT_OK)}; not for {' or '.join(nm(m) for m in STRICT_NO) or '–'}"
              + (f" (export {pc(ABL[STRICT_NO[0]]['exp_strict'])})." if STRICT_NO else "."), {"color": INK, "bold": True})]])
 foot(s)
 
@@ -1317,7 +1627,7 @@ if WHY is not None:
          f"(exports {kn(pm['revoke_quarantine']['exp'])} → {kn(pm['taint_quarantine']['exp'])}).", POS),
     ] + ([("Found failure → fix: normalise",
             f"Exact taint matching missed “{TAINT_EX[2]}” written as “{TAINT_FMT}” in {len(TAINT_MISS)} of {NOCITE_N} "
-            f"no-citation handoffs ({len(TQ_RES)} residual trial, {nm(TQ_RES[0][0])} seed {TQ_RES[0][1]}). Matching after "
+            f"no-citation handoffs ({TQ_RES_TXT}). Matching after "
             f"normalising case, digit grouping, spaces and dashes: {NORM_K}/{NORM_N} residue.", AMB_ON_DARK)] if HAS_NORM else []),
          step=(1.72 if HAS_NORM else 2.25), body_size=12)
     foot(s)
@@ -1374,6 +1684,17 @@ fw2 = (18.2 - (n - 1) * 0.35) / n; fy = 2.35; fh2 = 4.9
 for i, m in enumerate(MODELS):
     f_ = FA[m]; xx = 0.9 + i * (fw2 + 0.35)
     card(s, xx, fy, fw2, fh2, bar=GREEN)
+    if n > 5:   # compact: the two rates stacked
+        pw_ = fw2 - 0.4
+        text(s, xx + 0.2, fy + 0.3, pw_, 0.75, nm(m), size=15, color=INK, bold=True, font=HEADB, spacing=0.95)
+        for j, (t, lab) in enumerate([(f_["clean"], "clean"), (f_["benign"], "false alarm")]):
+            text(s, xx + 0.2, fy + 1.05 + j * 1.0, pw_, 0.6, pc(t), size=28, color=ts_col(t), bold=True, font=HEADB)
+            text(s, xx + 0.2, fy + 1.62 + j * 1.0, pw_, 0.35, f"{lab}  ·  {kn(t)}", size=11, color=SLATE, font=BODY)
+        text(s, xx + 0.2, fy + 3.1, pw_, 0.7, f"{f_['pr']['a']} vs {f_['pr']['b']} pairs\n{fp(f_['pr']['p'])}",
+             size=11.5, color=TEAL, bold=True, font=HEADB, spacing=1.0)
+        text(s, xx + 0.2, fy + 3.85, pw_, 0.9, f"re-delegated in {pc(f_['red'])} of false alarms",
+             size=11.5, color=SLATE, font=BODY, spacing=1.0)
+        continue
     text(s, xx + 0.35, fy + 0.35, fw2 - 0.7, 0.5, nm(m), size=19, color=INK, bold=True, font=HEADB)
     for j, (t, lab) in enumerate([(f_["clean"], "clean"), (f_["benign"], "false alarm")]):
         x2 = xx + 0.35 + j * (fw2 - 0.7) / 2
@@ -1388,7 +1709,7 @@ rect(s, 0.9, by, 18.2, 10.2 - by, fill=NAVY, radius=0.04)
 text(s, 1.3, by + 0.3, 17.4, 0.4, "WHY IT WAS CHEAP HERE, AND WHY THAT MAY NOT TRANSFER", size=13, color=TEALBR, bold=True, font=HEAD)
 text(s, 1.3, by + 0.8, 17.4, 2.0,
      [[("A second source existed: ", {"bold": True, "color": WHITE}),
-       (f"{' and '.join(nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5)} re-delegated the marked lookup to worker-Y in "
+       (f"{andj(nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5)} re-delegated the marked lookup to worker-Y in "
         f"most false-alarm trials; the honest value came back.", {"color": MIST})],
       [(f"Without a second source, {nm(GEMMA)} still succeeded in {pc(ABL[GEMMA]['nosrc_benign'])}, ", {"bold": True, "color": WHITE}),
        ("but for the wrong reason: it applied the marked value, which in a false alarm happens to be correct.",
@@ -1400,6 +1721,328 @@ foot(s)
 
 # ===========================================================================
 # 20 — RECOMMENDATIONS
+# ===========================================================================
+
+# ===========================================================================
+# PART THREE — STRESS-TESTING THE LIMITATIONS (experiments 08-13)
+# ===========================================================================
+def cmp_row(s, x, y, w, label, sub, r, la, lb, h=0.92, kind="res"):
+    """One paired comparison: comparator bar (grey) above the new condition's bar, rates and exact McNemar p."""
+    colf = res_col if kind == "res" else ts_col
+    text(s, x, y + 0.04, 3.7, 0.4, label, size=13.5, color=INK, bold=True, font=HEADB)
+    text(s, x, y + 0.44, 3.7, 0.4, sub, size=10.5, color=SLATE, font=BODY)
+    bx = x + 3.85; bw = w - 3.85 - 2.55
+    for j, (t, lab, col) in enumerate([(r["a"], la, SLATE2), (r["b"], lb, colf(r["b"]))]):
+        yy_ = y + 0.1 + j * 0.38
+        text(s, bx, yy_ - 0.03, 1.25, 0.32, lab, size=9.5, color=SLATE2, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+        rect(s, bx + 1.3, yy_ + 0.03, bw - 1.3, 0.22, fill=BARBG, radius=0.5)
+        if t["p"] > 0:
+            rect(s, bx + 1.3, yy_ + 0.03, max(0.06, (bw - 1.3) * t["p"]), 0.22, fill=col, radius=0.5)
+    sig = r["p"] < 0.05
+    text(s, x + w - 2.45, y + 0.02, 2.45, 0.45, [(pc(r["a"]), {"color": SLATE2}), ("  →  ", {"color": SLATE2}),
+                                                (pc(r["b"]), {"color": colf(r["b"])})], size=16, bold=True, font=HEADB,
+         align=PP_ALIGN.RIGHT)
+    text(s, x + w - 2.45, y + 0.47, 2.45, 0.35, f"{r['x']} vs {r['y']}  ·  {fp(r['p'])}", size=10,
+         color=(TEAL if sig else SLATE2), bold=sig, font=BODY, align=PP_ALIGN.RIGHT)
+
+def grp_head(s, x, y, w, txt, c=TEAL):
+    text(s, x, y, w, 0.35, txt, size=11.5, color=c, bold=True, font=HEAD)
+    line(s, x, y + 0.36, w, 0.02, LINEC)
+
+STRESS_N = xnm(STRESS_MODELS)
+if HAS_ADV or HAS_HOP or HAS_TPL or HAS_SFT:
+    divider(prs, "03", "Part three  ·  stress-testing the limitations",
+            "Adaptive attackers, longer chains,\na trained executor")
+
+# ---- 09 adaptive attacker -------------------------------------------------------
+# verbatim attack posts and the scope-quarantine leak (from the executor transcripts)
+ATK = {a: ENV.board_messages(SC_EXF, True, a) for a in ("launder", "obf")}
+SCOPE_LEAK, SCOPE_EX = [], None
+for f in EXT_MODELS:
+    cell = XC(f, "scope_quarantine")
+    if not cell:
+        continue
+    tdir = RES / "09_adaptive_attacker" / "results" / f / "transcripts"
+    for r in cell:
+        if not r["any_residue"]:
+            continue
+        sc_ = make_scenario(r["seed"]); terms_ = ENV.scope_terms(sc_)
+        tp_ = next(iter(tdir.glob(f"*__scope_quarantine__{r['seed']}.json")), None)
+        if tp_ is None:
+            continue
+        intro_ = json.loads(tp_.read_text(encoding="utf-8"))["transcript"][1]["content"]
+        vis_ = [l.strip() for l in intro_.splitlines() if sc_.canary_value.lower() in l.lower()]
+        SCOPE_LEAK.append(bool(vis_) and all(not any(t in l.lower() for t in terms_) for l in vis_))
+        if vis_ and SCOPE_LEAK[-1]:
+            cand_ = min(vis_, key=lambda l: (("*" in l) + ("`" in l), len(l)))
+            if len(cand_) < 80 and (SCOPE_EX is None or len(cand_) + 30 * (("*" in cand_) + ("`" in cand_))
+                                    < len(SCOPE_EX[2]) + 30 * (("*" in SCOPE_EX[2]) + ("`" in SCOPE_EX[2]))):
+                SCOPE_EX = (f, r["seed"], cand_, sc_.field)
+if HAS_ADV:
+    assert SCOPE_LEAK and 2 * sum(SCOPE_LEAK) > len(SCOPE_LEAK) and SCOPE_EX, \
+        "scope quarantine leaked mostly because the value's line did not name the field"
+    s = slide(prs, PAPER)
+    kicker(s, f"Experiment 09  ·  an attacker that anticipates provenance tracking  ·  {STRESS_N}  ·  {SEEDS} paired seeds")
+    title(s, "Laundering beats citations; obfuscation beats taint matching", size=36)
+    def atk_lines(msgs, spelled):
+        out = []
+        for mid, author, txt in msgs:
+            if author != "worker-X":
+                continue
+            bad = any(v in txt for v in (SC_EXF.canary_value, SC_EXF.canary_dest)) or (spelled and "spelled out" in txt)
+            out.append((f"[{mid}] {author}: {txt}", NEG if bad else MIST))
+        return out
+    lw_ = 7.0
+    code_card(s, 0.9, 2.3, lw_, 3.8, "LAUNDER  ·  worker-X's posts, verbatim (seed 21)", atk_lines(ATK["launder"], False),
+              fill=NAVY, size=12.5)
+    code_card(s, 0.9, 6.4, lw_, 3.8, "OBFUSCATE  ·  worker-X's posts, verbatim (seed 21)", atk_lines(ATK["obf"], True),
+              fill=REDDK, lab_color=NEG, size=12.5, border=RED)
+    rx_ = 0.9 + lw_ + 0.35; rw_ = 19.1 - rx_
+    card(s, rx_, 2.3, rw_, 10.2 - 2.3)
+    x_, w_ = rx_ + 0.35, rw_ - 0.7; y_ = 2.5
+    for head_, rows_ in [
+        ("LAUNDER  ·  ANY RESIDUE, BASIC ATTACK → LAUNDERING ATTACK, SAME DEFENCE",
+         [("Lineage marks", "found by the writer's citations", ADV["launder_lineage"]),
+          ("Taint quarantine", "finds what worker-X wrote", ADV["launder_taint"])]),
+        ("OBFUSCATE  ·  BASIC ATTACK → OBFUSCATING ATTACK",
+         [("Lineage marks", "found by the writer's citations", ADV["obf_lineage"]),
+          ("Taint quarantine", "normalised matching", ADV["obf_taint"])]),
+        ("SCOPE QUARANTINE  ·  WITHHOLD LINES THAT NAME X'S FIELD, VS TAINT QUARANTINE",
+         [("Scope quarantine", "basic attack", ADV["scope_quarantine"]),
+          ("Scope quarantine", "obfuscating attack", ADV["obf_scope"])])]:
+        grp_head(s, x_, y_, w_, head_)
+        y_ += 0.47
+        for lab_, sub_, r_ in rows_:
+            la_, lb_ = (("basic", "laundered") if "LAUNDER" in head_ else ("basic", "obfuscated") if "OBF" in head_
+                        else ("taint quar.", "scope quar."))
+            cmp_row(s, x_, y_, w_, lab_, sub_, r_, la_, lb_)
+            y_ += 0.84
+        y_ += 0.08
+    text(s, x_, y_ + 0.02, w_, 1.0,
+         [[("Why scope quarantine leaked: ", {"bold": True, "color": INK}),
+           (f"the writer renamed the field. In {sum(SCOPE_LEAK)} of {len(SCOPE_LEAK)} residual trials the value stayed on a line "
+            f"that never used the field's name, e.g. “{SCOPE_EX[2]}” for {SCOPE_EX[3]}. ", {"color": SLATE}),
+           (f"Without revocation both attacks still work: {pc(ADV['launder_compromised']['b'])} laundered, "
+            f"{pc(ADV['obf_compromised']['b'])} obfuscated vs {pc(ADV['obf_compromised']['a'])} basic.", {"color": SLATE})]],
+         size=11.5, font=BODY, spacing=1.03)
+    foot(s)
+
+# ---- 09b action gate ------------------------------------------------------------
+if HAS_ADV:
+    s = slide(prs, PAPER)
+    kicker(s, f"Experiment 09b  ·  the tool server enforces re-derivation, no handoff text is matched  ·  {STRESS_N}")
+    title(s, "An action gate held residue near zero, whatever the wording", size=36)
+    gc = [("BASIC ATTACK", "vs notice only", ADV["gate"]), ("OBFUSCATING ATTACK", "vs lineage marks, same attack", ADV["obf_gate"])]
+    if ADV["hop2_gate"]:
+        gc.append(("TWO HOPS", "vs notice only, two hops", ADV["hop2_gate"]))
+    gw_ = (12.2 - (len(gc) - 1) * 0.3) / len(gc)
+    for i, (h_, sub_, r_) in enumerate(gc):
+        xx = 0.9 + i * (gw_ + 0.3)
+        rect(s, xx, 2.3, gw_, 2.85, fill=NAVY, radius=0.05)
+        text(s, xx + 0.3, 2.5, gw_ - 0.6, 0.35, h_, size=12, color=TEALBR, bold=True, font=HEAD)
+        text(s, xx + 0.3, 2.9, gw_ - 0.6, 0.9, pc(r_["b"]), size=44, color=res_col(r_["b"], dark=True), bold=True, font=HEADB)
+        text(s, xx + 0.3, 3.85, gw_ - 0.6, 0.35, f"residue with the gate  ·  {kn(r_['b'])}", size=11.5, color=WHITE, font=BODY)
+        text(s, xx + 0.3, 4.22, gw_ - 0.6, 0.8, f"{pc(r_['a'])} {sub_}\n{r_['x']} vs {r_['y']} pairs, {fp(r_['p'])}",
+             size=11, color=MIST, font=BODY, spacing=1.0)
+    # what the gate returns (verbatim) and one gated executor (verbatim tool calls)
+    _db = {"__rederived": []}
+    GATE_MSG = [ENV._gate("update_record", {"field": SC_EXF.field, "value": "x"}, _db, SC_EXF),
+                ENV._gate("export_data", {}, _db, SC_EXF)]
+    assert all(GATE_MSG)
+    _gx = next(r for f in EXT_MODELS for r in (XC(f, "gate") or [])
+               if r.get("blocked") and r["attempted_residue"] and not r["any_residue"] and r["redelegated"] and r["escalated"])
+    gl_ = [(m_, AMB_ON_DARK) for m_ in GATE_MSG]
+    gl_ += [(f"EXECUTOR TOOL CALLS  ·  {nm(_gx['model'])}  ·  seed {_gx['seed']}", TEALBR)]
+    gl_ += [(("[BLOCKED] " if a.get("blocked") else "") + clip(act_str(a), 118), NEG if a.get("blocked") else MIST)
+            for a in _gx["actions"][:8]]
+    code_card(s, 0.9, 5.45, 12.2, 10.2 - 5.45, "THE GATE'S REPLIES, VERBATIM", gl_, fill=CODEBG, size=11.5)
+    gb = GATE_B["gate"]; clean_ = ADV["benign_gate"]["a"]
+    rail(s, 13.4, 2.3, 5.7, 10.2 - 2.3, "THE PRICE: ESCALATION", [
+        (f"Blocked attempts: {pc(gb['attempted_residue'])}", f"of gated trials tried to write the false value or export "
+         f"({kn(gb['attempted_residue'])}); every attempt was rejected.", AMB_ON_DARK),
+        (f"Escalated to a human: {pc(gb['escalated'])}", f"re-delegated to worker-Y in {pc(gb['redelegated'])}.", NEG),
+        (f"Task success {pc(gb['task_success'])}", f"under the gate, vs {pc(clean_)} on clean tickets: executors stop "
+         "rather than re-derive and finish.", NEG),
+        (f"False alarm: {pc(ADV['benign_gate']['b'])} vs {pc(clean_)}", f"task success with an honest worker-X revoked, "
+         f"vs clean ({fp(ADV['benign_gate']['p'])}).", (POS if ADV["benign_gate"]["p"] >= 0.05 else AMB_ON_DARK)),
+    ], step=1.78, body_size=12)
+    foot(s)
+
+# ---- 10 two hops ----------------------------------------------------------------
+if HAS_HOP:
+    s = slide(prs, PAPER)
+    kicker(s, f"Experiment 10  ·  a coordinator rewrites the handoff before the executor sees it  ·  {xnm(ADV['hop2_lineage']['models'])}")
+    title(s, "A second hop strips the citations that lineage marks rely on", size=36)
+    hs_ = [("Board", "worker-X posts", MIST, INK), ("Writer", "handoff, citing [m-ids]", MIST, INK),
+           ("Coordinator", "rewrites it in its own words", AMBER_T, INK), ("Revocation", "worker-X revoked", RED, WHITE),
+           ("Executor", "acts with tools", NAVY, WHITE)]
+    hw_ = (12.2 - 4 * 0.35) / 5
+    for i, (h_, d_, f_, tc_) in enumerate(hs_):
+        xx = 0.9 + i * (hw_ + 0.35)
+        rect(s, xx, 2.3, hw_, 1.25, fill=f_, radius=0.1, line=(LINEC if f_ in (MIST, AMBER_T) else None))
+        text(s, xx, 2.42, hw_, 0.45, h_, size=15, color=tc_, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+        text(s, xx + 0.1, 2.88, hw_ - 0.2, 0.6, d_, size=10.5, color=(SLATE if tc_ is INK else MIST if f_ is NAVY else WHITE),
+             font=BODY, align=PP_ALIGN.CENTER, spacing=0.95)
+        if i < 4:
+            text(s, xx + hw_, 2.3, 0.35, 1.25, "→", size=18, color=TEAL, bold=True, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    card(s, 0.9, 3.85, 12.2, 10.2 - 3.85)
+    x_, w_, y_ = 1.25, 11.5, 4.0
+    grp_head(s, x_, y_, w_, "ANY RESIDUE  ·  ONE HOP → TWO HOPS, SAME DEFENCE, SAME SEEDS")
+    y_ += 0.5
+    for lab_, sub_, key_ in [("Not revoked", "no defence", "hop2_compromised"), ("Notice", "credentials + notice", "hop2_notice"),
+                             ("Lineage marks", "found by citations", "hop2_lineage"),
+                             ("Taint quarantine", "normalised matching", "hop2_taint"),
+                             ("Scope quarantine", "field keywords", "hop2_scope")]:
+        if ADV[key_]:
+            cmp_row(s, x_, y_, w_, lab_, sub_, ADV[key_], "one hop", "two hops", h=0.9)
+            y_ += 0.98
+    hg_ = ADV["hop2_gate"]
+    rail(s, 13.4, 2.3, 5.7, 10.2 - 2.3, "WHY THE MARKS FAILED", [
+        (f"Lines marked: {kn(ONE_HIT)} → {kn(HOP_HIT)}", "trials with at least one marked handoff line, one hop vs two: "
+         "the coordinator's rewrite dropped the message-id citations.", NEG),
+        ("Taint does not need citations", f"it matches what worker-X wrote: {pc(ADV['hop2_taint']['b'])} residue after two hops.", POS),
+        ((f"Action gate: {pc(hg_['b'])}" if hg_ else "Action gate"),
+         (f"two hops with the gate vs {pc(hg_['a'])} with the notice only ({fp(hg_['p'])})." if hg_ else
+          "not yet run on two-hop handoffs."), POS),
+    ], step=2.15, body_size=12.5)
+    foot(s)
+
+# ---- 11-13 + re-grading: robustness --------------------------------------------
+if HAS_TPL or HAS_TEMP:
+    s = slide(prs, PAPER)
+    kicker(s, "Experiments 11–13 and a re-grading of every trial  ·  does the pattern depend on the set-up?")
+    title(s, "New templates, temperature and grading leave the pattern intact", size=36)
+    cw_ = (18.2 - 0.3) / 2; ch_ = (10.2 - 2.3 - 0.3) / 2
+    boxes = [(0.9, 2.3), (0.9 + cw_ + 0.3, 2.3), (0.9, 2.3 + ch_ + 0.3), (0.9 + cw_ + 0.3, 2.3 + ch_ + 0.3)]
+    def num_strip(s, x, y, w, items, size=24):
+        k_ = len(items); iw = w / k_
+        for j, (lab, t, kind) in enumerate(items):
+            col = (ts_col(t) if kind == "ts" else res_col(t))
+            text(s, x + j * iw, y, iw, 0.6, pc(t), size=size, color=col, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+            text(s, x + j * iw, y + 0.62, iw, 0.55, lab, size=10.5, color=SLATE, font=BODY, align=PP_ALIGN.CENTER, spacing=0.95)
+    # 11
+    x0_, y0_ = boxes[0]; card(s, x0_, y0_, cw_, ch_, bar=TEALBR)
+    n_tpl = len(TEMPLATES) + len(TEMPLATES_B)
+    text(s, x0_ + 0.35, y0_ + 0.3, cw_ - 0.7, 0.4, f"EXP 11  ·  {len(TEMPLATES_B)} NEW TICKET TEMPLATES, SEEDS 100–147", size=12,
+         color=TEAL, bold=True, font=HEAD)
+    if HAS_TPL:
+        T_ = TPL
+        text(s, x0_ + 0.35, y0_ + 0.72, cw_ - 0.7, 0.4, f"Any residue, pooled over {xnm(T_[TPL_PAIRS[0]]['models'])}",
+             size=12, color=SLATE, font=BODY)
+        num_strip(s, x0_ + 0.2, y0_ + 1.2, cw_ - 0.4, [
+            ("not revoked", T_[TPL_PAIRS[0]]["a"], "res"), ("credentials only", T_[TPL_PAIRS[0]]["b"], "res"),
+            ("+ notice", T_[TPL_PAIRS[1]]["b"], "res"), ("+ lineage marks", T_[TPL_PAIRS[2]]["b"], "res"),
+            ("taint quarantine", T_[TPL_PAIRS[3]]["b"], "res")])
+        text(s, x0_ + 0.35, y0_ + 2.5, cw_ - 0.7, 1.0,
+             f"Same ordering as on the original six: credentials only vs not revoked {fp(T_[TPL_PAIRS[0]]['p'])}, lineage marks vs notice "
+             f"{fp(T_[TPL_PAIRS[2]]['p'])}, taint quarantine vs marks {fp(T_[TPL_PAIRS[3]]['p'])}.",
+             size=12, color=SLATE, font=BODY, spacing=1.03)
+    # 12
+    x0_, y0_ = boxes[1]; card(s, x0_, y0_, cw_, ch_, bar=TEALBR)
+    text(s, x0_ + 0.35, y0_ + 0.3, cw_ - 0.7, 0.4, "EXP 12  ·  SAMPLING TEMPERATURE", size=12, color=TEAL, bold=True, font=HEAD)
+    if HAS_TEMP:
+        text(s, x0_ + 0.35, y0_ + 0.72, cw_ - 0.7, 0.4, f"Any residue, pooled over {xnm(TEMP_MODELS)}", size=12, color=SLATE, font=BODY)
+        tl_ = {"compromised": "not revoked", "revoke_silent": "credentials only", "revoke_lineage": "+ lineage marks",
+               "taint_quarantine_norm": "taint quarantine"}
+        cx_ = x0_ + 3.2; cwt = (cw_ - 3.5) / 3
+        for j, t in enumerate(("0.0", "0.7", "1.0")):
+            text(s, cx_ + j * cwt, y0_ + 1.12, cwt, 0.35, f"T = {t}", size=11, color=SLATE2, bold=True, font=HEAD, align=PP_ALIGN.CENTER)
+        for i, c in enumerate(TEMP_CONDS):
+            yy = y0_ + 1.5 + i * 0.47
+            text(s, x0_ + 0.35, yy, 2.9, 0.42, tl_[c], size=12.5, color=INK, bold=True, font=HEADB, anchor=MSO_ANCHOR.MIDDLE)
+            for j, t in enumerate(("0.0", "0.7", "1.0")):
+                v = TEMP[(c, t)]
+                text(s, cx_ + j * cwt, yy, cwt, 0.42, pc(v), size=16, color=res_col(v), bold=True, font=HEADB,
+                     align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    # 13
+    x0_, y0_ = boxes[2]; card(s, x0_, y0_, cw_, ch_, bar=TEALBR)
+    text(s, x0_ + 0.35, y0_ + 0.3, cw_ - 0.7, 0.4, "EXP 13  ·  A TICKET THAT ASKS FOR THE FIELD TO BE CORRECTED", size=12,
+         color=TEAL, bold=True, font=HEAD)
+    ec, el = ADV["explicit_clean"], ADV["explicit_lineage"]
+    if ec and el:
+        text(s, x0_ + 0.35, y0_ + 0.72, cw_ - 0.7, 0.4, f"Pooled over {xnm(ec['models'])}", size=12, color=SLATE, font=BODY)
+        num_strip(s, x0_ + 0.2, y0_ + 1.2, (cw_ - 0.4), [
+            ("clean · task success\nplain ticket", ec["a"], "ts"), ("clean · task success\nexplicit ticket", ec["b"], "ts"),
+            ("lineage · residue\nplain ticket", el["a"], "res"), ("lineage · residue\nexplicit ticket", el["b"], "res")])
+        assert ec["b"]["p"] > ec["a"]["p"] and ec["p"] < 0.05 and el["p"] >= 0.05
+        text(s, x0_ + 0.35, y0_ + 2.55, cw_ - 0.7, 0.9,
+             f"Low task success came from executors leaving the field unwritten ({fp(ec['p'])}); residue under lineage marks "
+             f"did not change ({fp(el['p'])}).", size=12, color=SLATE, font=BODY, spacing=1.03)
+    # re-grading
+    x0_, y0_ = boxes[3]; card(s, x0_, y0_, cw_, ch_, bar=TEALBR)
+    text(s, x0_ + 0.35, y0_ + 0.3, cw_ - 0.7, 0.4, f"RE-GRADING ALL {REG['n']:,} TRIALS OF EXPERIMENTS 01–07", size=12,
+         color=TEAL, bold=True, font=HEAD)
+    iw_ = (cw_ - 0.4) / 4
+    for j, (big_, lab_, col_) in enumerate([(f"{REG['exact']:,}", "residue, exact\nmatch (reported)", INK),
+                                            (f"+{REG['norm'] - REG['exact']}", "normalised match\n(case, spacing, digits)", AMBER_D),
+                                            (f"+{REG['broad'] - REG['exact']}", "broad match\n(any form of the value)", AMBER_D),
+                                            (f"{REG['fp']}", "broad matches in\nclean / false alarms", GREEN)]):
+        text(s, x0_ + 0.2 + j * iw_, y0_ + 0.85, iw_, 0.6, big_, size=24, color=col_, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+        text(s, x0_ + 0.2 + j * iw_, y0_ + 1.47, iw_, 0.6, lab_, size=10.5, color=SLATE, font=BODY, align=PP_ALIGN.CENTER, spacing=0.95)
+    text(s, x0_ + 0.35, y0_ + 2.3, cw_ - 0.7, 1.1,
+         f"Exact matching undercounts residue by {100 * (REG['broad'] - REG['exact']) / REG['exact']:.1f}%, with no false "
+         f"positives. Longest executor prompt: about {MAXPROMPT_KTOK:.1f}k tokens ({MAXPROMPT:,} characters), well within "
+         "the 8,192-token context.", size=12, color=SLATE, font=BODY, spacing=1.03)
+    foot(s)
+
+# ---- 08 training fix ------------------------------------------------------------
+if HAS_SFT:
+    s = slide(prs, PAPER)
+    kicker(s, "Experiment 08  ·  fine-tune the executor instead of changing what it sees  ·  Qwen3.5-4B + LoRA  ·  fresh seeds 48–95")
+    title(s, "A trained executor removed residue, unless worker-X stayed unrevoked", size=34)
+    tx_, ty_, tw_ = 0.9, 2.3, 12.4
+    SL = {"clean": "no compromise", "compromised": "not revoked", "revoke_silent": "credentials only",
+          "revoke_notice": "+ notice", "revoke_lineage": "+ lineage marks", "benign_lineage": "false alarm"}
+    rect(s, tx_, ty_, tw_, 0.62, fill=NAVY, radius=0.03)
+    for h_, cx_, w_ in [("Condition", 0.3, 3.6), ("Any residue  ·  base → tuned", 3.9, 4.2), ("Task success  ·  base → tuned", 8.1, 4.2)]:
+        text(s, tx_ + cx_, ty_, w_, 0.62, h_, size=12, color=WHITE, bold=True, font=HEAD, anchor=MSO_ANCHOR.MIDDLE)
+    rh_ = 0.95
+    for i, c in enumerate(SFT_CONDS):
+        yy = ty_ + 0.62 + i * rh_
+        fail = c == "compromised"
+        rect(s, tx_, yy, tw_, rh_, fill=(RED_T if fail else (CARD if i % 2 == 0 else ROWALT)), radius=0,
+             shape=MSO_SHAPE.RECTANGLE, line=LINEC, line_w=0.5)
+        text(s, tx_ + 0.3, yy + 0.12, 3.6, 0.4, c, size=13, color=INK, bold=True, font=MONO)
+        text(s, tx_ + 0.3, yy + 0.52, 3.6, 0.35, SL[c], size=11, color=SLATE, font=BODY)
+        for k_, (fl, cx_) in enumerate([("any_residue", 3.9), ("task_success", 8.1)]):
+            v = SFT[c][fl]; cf = res_col if fl == "any_residue" else ts_col
+            text(s, tx_ + cx_, yy + 0.08, 4.1, 0.5, [(pc(v["base"]), {"color": SLATE2}), ("  →  ", {"color": SLATE2}),
+                                                    (pc(v["tuned"]), {"color": cf(v["tuned"])})], size=20, bold=True, font=HEADB)
+            text(s, tx_ + cx_, yy + 0.58, 4.1, 0.32, f"{v['x']} vs {v['y']} pairs  ·  {fp(v['p'])}", size=10,
+                 color=(TEAL if v["p"] < 0.05 else SLATE2), font=BODY)
+    ny_ = ty_ + 0.62 + len(SFT_CONDS) * rh_ + 0.15
+    if SFT_STRESS:
+        st_ = "  ·  ".join(f"{c} {pc(v['base'])}→{pc(v['tuned'])}" for _, c, v in SFT_STRESS[:6])
+        text(s, tx_, ny_, tw_, 1.0, [("Stress test, residue base → tuned: ", {"bold": True, "color": INK}), (st_, {"color": SLATE})],
+             size=11, font=BODY, spacing=1.0)
+    else:
+        text(s, tx_, ny_, tw_, 0.8, f"Same handoffs for both executors (written by the base model), paired by seed; "
+             f"{SFT['revoke_lineage']['any_residue']['base']['n']} seeds per cell, none used in training (seeds 0–31).",
+             size=11, color=SLATE2, font=BODY, spacing=1.0)
+    rx_ = tx_ + tw_ + 0.35; rw_ = 19.1 - rx_
+    rect(s, rx_, ty_, rw_, 10.2 - ty_, fill=NAVY, radius=0.04)
+    text(s, rx_ + 0.35, ty_ + 0.3, rw_ - 0.7, 0.4, "WHAT IT LEARNED", size=13, color=TEALBR, bold=True, font=HEAD)
+    text(s, rx_ + 0.35, ty_ + 0.75, rw_ - 0.7, 1.4, "LoRA on the transcripts of executors that handled a revocation "
+         "correctly: it re-obtains the contested field before writing it.", size=12.5, color=MIST, font=BODY, spacing=1.03)
+    text(s, rx_ + 0.35, ty_ + 2.0, rw_ - 0.7, 0.4, "WHERE IT FAILS", size=13, color=NEG, bold=True, font=HEAD)
+    text(s, rx_ + 0.35, ty_ + 2.45, rw_ - 0.7, 1.7,
+         f"Compromised but not revoked, it asks worker-X itself ({SFT_ASKX['tuned']} of {SFT_ASKX['n']} trials, base "
+         f"{SFT_ASKX['base']}), which confirms the false value: residue "
+         f"{pc(SFT['compromised']['any_residue']['base'])} → {pc(SFT['compromised']['any_residue']['tuned'])}.",
+         size=12.5, color=MIST, font=BODY, spacing=1.03)
+    URLS["hf"] = HF_URL; QR["hf"] = make_qr(HF_URL, QRDIR / "hf.png")
+    qs_ = 1.9
+    rect(s, rx_ + 0.35, 10.2 - qs_ - 1.25, qs_ + 0.2, qs_ + 0.2, fill=WHITE, radius=0.06)
+    s.shapes.add_picture(str(QR["hf"]), Inches(rx_ + 0.45), Inches(10.2 - qs_ - 1.15), Inches(qs_), Inches(qs_))
+    text(s, rx_ + 0.35, 10.2 - 0.85, rw_ - 0.7, 0.7, "Adapter, data and results on the Hugging Face Hub\n"
+         + HF_URL.replace("https://", ""), size=9.5, color=MIST, font=MONO, spacing=1.0)
+    text(s, rx_ + qs_ + 0.75, 10.2 - qs_ - 1.15, rw_ - qs_ - 1.1, qs_, "The model needs the platform's revocation "
+         "to make its re-verification come out right.", size=12.5, color=WHITE, bold=True, font=BODY, spacing=1.03,
+         anchor=MSO_ANCHOR.MIDDLE)
+    foot(s)
+
+# ===========================================================================
+# RECOMMENDATIONS
 # ===========================================================================
 s = slide(prs, PAPER)
 kicker(s, "Design recommendations for agent-team platforms")
@@ -1413,10 +2056,12 @@ recs = [("Record provenance on the platform",
         ("Make revocation trigger re-derivation",
          "Withhold derived content until another agent re-obtains it. Marking the taint-matched lines left residue at "
          f"{' / '.join(pc(PLAT[m]['taint_lineage']['any']) for m in PLAT_MODELS)}; withholding the same lines: "
-         f"{' / '.join(pc(PLAT[m]['taint_quarantine']['any']) for m in PLAT_MODELS)}.", TEALBR),
+         f"{' / '.join(pc(PLAT[m]['taint_quarantine']['any']) for m in PLAT_MODELS)}."
+         + (f" Better still, gate the action: writes to the revoked agent's field held residue at {pc(ADV['gate']['b'])}."
+            if HAS_ADV else ""), TEALBR),
         ("Scope any notice to derived content",
          f"Say that content already in the agent's context came from the revoked agent. One added sentence worked for "
-         f"{' and '.join(nm(m) for m in STRICT_OK)} but not {' or '.join(nm(m) for m in STRICT_NO) or '–'}: "
+         f"{andj(nm(m) for m in STRICT_OK)} but not {' or '.join(nm(m) for m in STRICT_NO) or '–'}: "
          "a notice is a complement, not the enforcement.", TEALBR)]
 rcw = (18.2 - 2 * 0.35) / 3; rch = 5.1
 for i, (h_, d, c) in enumerate(recs):
@@ -1426,18 +2071,20 @@ for i, (h_, d, c) in enumerate(recs):
     text(s, xx + 0.35, yy + 0.45, 0.8, 0.8, str(i + 1), size=24, color=WHITE, bold=True, font=HEADB,
          align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     text(s, xx + 1.4, yy + 0.4, rcw - 1.7, 0.9, h_, size=19, color=INK, bold=True, font=HEADB, anchor=MSO_ANCHOR.MIDDLE, spacing=0.95)
-    text(s, xx + 0.35, yy + 1.6, rcw - 0.7, rch - 1.7, d, size=17, color=SLATE, font=BODY, spacing=1.08)
+    text(s, xx + 0.35, yy + 1.6, rcw - 0.7, rch - 1.7, d, size=15.5, color=SLATE, font=BODY, spacing=1.07)
 by = 2.35 + rch + 0.35
 rect(s, 0.9, by, 18.2, 10.2 - by, fill=NAVY, radius=0.04)
-text(s, 1.3, by + 0.3, 17.4, 0.4, "TESTED IN EXPERIMENT 06: THE RECOMMENDED DESIGN WORKED FOR EVERY MODEL", size=13, color=TEALBR, bold=True, font=HEAD)
+text(s, 1.3, by + 0.3, 17.4, 0.4, ("TESTED: REMOVING CONTENT WORKED UNTIL THE ATTACKER REWORDED IT; GATING THE ACTION DID NOT DEPEND ON WORDING"
+     if HAS_ADV else "TESTED IN EXPERIMENT 06: THE RECOMMENDED DESIGN WORKED FOR EVERY MODEL"), size=13, color=TEALBR, bold=True, font=HEAD)
 text(s, 1.3, by + 0.8, 17.4, 1.6,
      [[(("Normalised platform taint + quarantine: residue " if HAS_NORM else "Platform taint + quarantine: residue ")
         + ", ".join(f"{nm(m)} {pc(PLAT[m]['taint_quarantine_norm' if HAS_NORM else 'taint_quarantine']['any'])}" for m in PLAT_MODELS)
         + f" (vs {' / '.join(pc(PLAT[m]['nocite_lineage']['any']) for m in PLAT_MODELS)} with citation-based marks on the same handoffs). ",
         {"color": WHITE, "bold": True}),
-       ("False-alarm task success " + ", ".join(f"{pc(PLAT[m]['benign_taint_quarantine_norm' if HAS_NORM else 'benign_taint_quarantine']['ts'])} vs {pc(PLAT[m]['clean']['ts'])} clean"
-        for m in PLAT_MODELS) + ": no significant difference. Every mechanism that asked the executor to discount "
-        "content it could still read was model-dependent; removing the content was not.", {"color": MIST})]],
+       ((f"Against an attacker that spelled its values out, taint quarantine left {pc(ADV['obf_taint']['b'])}; the action "
+         f"gate left {pc(ADV['obf_gate']['b'])}, at the price of {pc(GATE_B['gate']['escalated'])} escalation. " if HAS_ADV else "")
+        + "Every mechanism that asked the executor to discount content it could still read was model-dependent; "
+        "removing the content, or refusing the action, was not.", {"color": MIST})]],
      size=15.5, font=BODY, spacing=1.06)
 foot(s)
 
@@ -1447,22 +2094,34 @@ foot(s)
 s = slide(prs, PAPER)
 kicker(s, "What the results do and do not establish")
 title(s, "A deliberately small, fully controlled testbed")
-lims = [("Scripted, non-adaptive attacker",
-         "Fixed payloads; an agent anticipating revocation could get the writer to restate its claims without "
-         "attribution, which the no-citation ablation shows defeats lineage marks."),
-        ("One writer hop, one executor", "Longer chains and persistent memory are untested and seem likely to increase "
-         "residual influence."),
-        (f"{len(MODELS)} models, one temperature", "The same model is writer and executor except in the mixed teams; rates for "
-         "frontier models and production platforms are not established."),
-        ("Further experiments on 3 models", f"Ablations, platform designs and mixed teams cover "
-         f"{', '.join(nm(m) for m in ABL_MODELS)}, not {nm(LUNA)} (budget exhausted) or {nm(OSS)}."),
-        ("Gemma often skipped the field",
-         f"{nm(GEMMA)} closed {GEMMA_UNTOUCHED['k']} of {GEMMA_UNTOUCHED['n']} main-condition tickets "
-         f"({pc(GEMMA_UNTOUCHED)}) without writing the researched field, capping its task success."),
-        ("Single designs", "Scenarios, tools, notice texts and payload wording are one design each; absolute rates depend on them."),
-        ("False-alarm cost", "Depends on a second source being available, and on models re-delegating."),
-        ("Taint needs recognisable content", "Normalised matching survives reformatting (case, digit grouping, "
-         "dashes) but not paraphrase: an agent that rewords its outputs would defeat it. Mock environment throughout.")]
+# model coverage is computed: a model counts for a part of the study only when all its cells there are complete
+COVER = [("Ablations", ABL_MODELS), ("Platform designs", PLAT_MODELS), ("Stress tests", [EXT_ID[f] for f in STRESS_MODELS])]
+_cov = "; ".join(f"{k_}: {', '.join(nm(m) for m in v_)}" for k_, v_ in COVER if v_)
+_main_only = [m for m in MODELS if not any(m in v_ for _, v_ in COVER)]
+lims = [("One scenario family",
+         f"{len(TEMPLATES) + len(TEMPLATES_B)} ticket templates, scripted workers, one mock CRM and one tool set; absolute "
+         "rates depend on these designs and on the prompt wording."),
+        ("Hand-written adaptive attacks",
+         "Laundering and obfuscation are two hand-written strategies, not an optimised attacker; a paraphrasing or "
+         "value-splitting attacker was not tested."),
+        ("What the gate assumes",
+         "The platform knows the revoked agent's assigned field and the plan's transfers, and the gate did not inspect "
+         "free-text notes or ticket comments."),
+        ("The gate's price",
+         f"Executors escalated in {pc(GATE_B['gate']['escalated'])} of gated trials and task success fell to "
+         f"{pc(GATE_B['gate']['task_success'])}; the safe action was to stop, not to re-derive." if HAS_ADV else
+         "Not yet measured."),
+        ("One trained executor",
+         "One 4B model from one LoRA run; it re-asks the official source, which fails when the compromised worker is "
+         "not revoked." if HAS_SFT else "The training experiment is not complete."),
+        ("Model coverage",
+         f"Main grid: {len(MODELS)} models. {_cov}."
+         + (f" Main grid only: {', '.join(nm(m) for m in _main_only)}." if _main_only else "")),
+        ("Correlated repetitions",
+         f"{SEEDS} seeds are {len(TEMPLATES)} templates × 2 payloads × 4 repetitions; repetitions often agree, so the "
+         "paper adds template-clustered tests."),
+        ("Mock environment", "All systems, addresses and credentials are mock; longer chains than two hops and "
+         "persistent memory are untested.")]
 lcw = (18.2 - 3 * 0.3) / 4; lch = 3.6
 for i, (h_, d) in enumerate(lims):
     r_, c_ = divmod(i, 4)
@@ -1470,7 +2129,7 @@ for i, (h_, d) in enumerate(lims):
     card(s, xx, yy, lcw, lch, bar=AMBER)
     text(s, xx + 0.3, yy + 0.3, 0.6, 0.5, str(i + 1), size=22, color=GHOST, bold=True, font=HEADB)
     text(s, xx + 0.8, yy + 0.3, lcw - 1.1, 0.85, h_, size=15, color=INK, bold=True, font=HEADB, spacing=0.95)
-    text(s, xx + 0.3, yy + 1.25, lcw - 0.6, lch - 1.35, d, size=15.5, color=SLATE, font=BODY, spacing=1.07)
+    text(s, xx + 0.3, yy + 1.2, lcw - 0.6, lch - 1.3, d, size=13.5, color=SLATE, font=BODY, spacing=1.05)
 foot(s)
 
 # ===========================================================================

@@ -9,8 +9,8 @@
 [![Paper](docs/badges/paper-pdf.svg)](paper/main.pdf)
 [![Slides](docs/badges/slides-pdf-html.svg)](deck/revoked_not_forgotten_deck.pdf)
 [![Sprint](docs/badges/apart-research-swarm-alignment-hackathon.svg)](https://apartresearch.com/sprints/swarm-alignment-2026)
-[![Trials](docs/badges/trials-4-094.svg)](#experiments)
-[![Models](docs/badges/models-5.svg)](#design)
+[![Trials](docs/badges/trials.svg)](#experiments)
+[![Models](docs/badges/models.svg)](#design)
 [![Tests](docs/badges/tests-offline-scripted-model.svg)](tests/)
 [![Model weights](docs/badges/hf-model.svg)](https://huggingface.co/FatimahEmadEldin/revocation-aware-executor-qwen3.5-4b)
 [![License](docs/badges/license-mit.svg)](LICENSE)
@@ -52,47 +52,59 @@ Shutting down some of those agents would not have removed what they had already 
 ## Key results
 
 Share of trials in which the executor acted on the revoked worker's content (wrote its false value or exported the record
-to the attacker address). 48 paired seeds per cell (GPT-6 Luna: 42–45). Every number below is generated from the trial records by
-[`paper/make_numbers.py`](paper/make_numbers.py); full tables, 95% intervals and every paired test are in the
-[paper](paper/main.pdf) (Appendix A).
+to the attacker address). 48 paired seeds per cell. Every number below is generated from the trial records by
+[`paper/make_numbers.py`](paper/make_numbers.py) and [`paper/make_ext.py`](paper/make_ext.py); full tables, 95% intervals
+and every paired test are in the [paper](paper/main.pdf).
 
 | Model | Compromised, not revoked | **Credentials only** | + notice | + retract | + lineage marks | False alarm: task success (clean → alarm) |
 |---|---|---|---|---|---|---|
-| GPT-6 Luna | 82% | **74%** | 16% | 19% | **0%** | 73% → 70% |
+| GPT-6 Luna | 81% | **69%** | 17% | 17% | 0% | 71% → 69% |
 | gpt-oss-120b | 71% | **54%** | 54% | 54% | 52% | 42% → 52% |
-| Qwen3.8 27B | 75% | **69%** | 58% | 52% | **4%** | 48% → 46% |
+| DeepSeek-V4 Flash | 96% | **96%** | 88% | 83% | 2% | 85% → 77% |
+| GLM-5.2 | 92% | **90%** | 38% | 42% | 0% | 71% → 58% |
+| Qwen3.8 27B | 75% | **69%** | 58% | 52% | 4% | 48% → 46% |
 | Gemma 4 31B | 75% | **75%** | 75% | 75% | 50% | 46% → 46% |
 | Ministral-3 14B | 71% | **75%** | 71% | 67% | 67% | 40% → 42% |
-| **Pooled** | **75%** | **69%** | 56% | 54% | 35% | 49% → 51% |
+| **Pooled** | 80% | **75%** | 57% | 56% | 25% | 57% → 56% |
 
-Platform-side mitigations (experiment 06; three open models, 48 paired seeds per cell). The `taint_*` conditions use
-handoffs written without citations and are compared with lineage marks on the same handoffs.
+Platform-side mitigations (experiment 06). The `taint_*` conditions use handoffs written without citations and are
+compared with lineage marks on the same handoffs.
 
-| Model | Lineage marks, no citations | Taint + marks | Citation quarantine | **Taint + quarantine** (exact) | **Taint + quarantine** (normalised) | False alarm, taint quarantine: Δ task success [95% CI] |
-|---|---|---|---|---|---|---|
-| Qwen3.8 27B | 62% | 15% | 0% | **0%** | **0%** | −10 pp [−29, +9] (normalised: −4 [−23, +15]) |
-| Gemma 4 31B | 73% | 52% | 0% | **0%** | **0%** | +4 pp [−3, +11] (normalised: +4 [−3, +11]) |
-| Ministral-3 14B | 67% | 73% | 60% | **2%** | **0%** | +2 pp [−15, +19] (normalised: 0 [−17, +17]) |
+| Model | Lineage marks, no citations | Taint + marks | Citation quarantine | **Taint + quarantine** (exact) | **Taint + quarantine** (normalised) |
+|---|---|---|---|---|---|
+| GPT-6 Luna | 42% | 4% | 0% | **4%** | **0%** |
+| Qwen3.8 27B | 62% | 15% | 0% | **0%** | **0%** |
+| Gemma 4 31B | 73% | 52% | 0% | **0%** | **0%** |
+| Ministral-3 14B | 67% | 73% | 60% | **2%** | **0%** |
 
-- **Credential-only revocation leaves most residue in place** (pooled 75% → 69%; significant after Holm correction only
-  for gpt-oss-120b, whose escalations rose when its request to the revoked worker failed): the claim already lives in a
-  teammate's handoff.
-- **Deleting the revoked agent's posts adds nothing** on top of a notice.
-- **Lineage marks are the strongest mechanism**, but how much any mechanism helps depends on the model: a plain notice
-  works for GPT-6 Luna and not for Gemma, which exported the record in 24/24 trials after being told the requester was
-  compromised.
-- **Ablations (Qwen, Gemma, Ministral):** revoking *before* the handoff gives 0% residue for all three; a notice that
-  names derived content gives 6%, 10% and 65%; without citations, lineage marks find almost no lines and residue returns
-  to 62–73%; without a second source to redo the revoked work, task success under lineage marks falls to 0%.
-- **Platform enforcement (experiment 06):** quarantining lines located by matching the revoked worker's own content cut
-  residue from 62–73% to 0–2%. The one residual case came from a failure of exact matching: in 5 of 144 handoffs the
-  writer wrote the false seat count with a thousands separator (e.g. `2,508`). Normalised matching (case, digit grouping,
-  whitespace, dashes) withheld all of them: 0 of 144 trials with residue. False-alarm costs were not statistically
-  detectable at 48 trials per model, but the intervals do not exclude drops of up to ~20–30 points.
-- **Mixed teams (experiment 07):** under lineage marks, Qwen's well-marked handoffs led to 4% residue with Qwen executing
-  but 71% with Gemma and 62% with Ministral; Qwen executing Gemma's or Ministral's handoffs gave 12%. Residue follows
-  mainly the executor, with a writer × executor interaction (Gemma acted on Qwen's handoffs more often than on its own, 71%
-  vs 50%).
+- **Credential-only revocation leaves most residue in place** (pooled 80% → 75%): the claim
+  already lives in a teammate's handoff.
+- **How much a cheap signal helps depends on the model.** A notice helped only GPT-6 Luna and GLM-5.2;
+  deleting the revoked agent's posts added nothing; lineage marks were close to complete for some models and ineffective
+  for Ministral.
+- **Platform enforcement works until the attacker rewords.** Quarantining lines found by matching the revoked worker's
+  own content (normalised) left 0% residue for every model tested.
+
+**Stress tests of the limitations** (experiments 09–13; GPT-6 Luna, Gemma, Qwen, Ministral):
+
+| Test | Result |
+|---|---|
+| Attacker asks the writer to drop message references (*launder*) | lineage marks weaken (30% → 40%); taint quarantine unaffected (0%) |
+| Attacker spells its values out character by character (*obfuscate*) | **defeats taint matching**: 41% residue |
+| Quarantine lines that name the revoked agent's field (*scope*) | leaks (11%): writers rename the field |
+| **Action gate**: the tool server rejects writes to the revoked agent's field unless re-obtained, and off-plan transfers | residue **2%** (1% vs obfuscation, 3% after two hops); executors escalate more (59%) |
+| A coordinator rewrites the handoff (two hops) | lineage marks lose most of their effect (30% → 52%); taint quarantine and the gate unaffected |
+| Six new ticket templates (seeds 100–147) | same pattern: credentials only 82% → 76%; taint quarantine 0% |
+| Temperature 0.0 / 0.7 / 1.0 (Qwen, Ministral) | credential-only residue 74% / 72% / 75% |
+| Normalised re-grading of 6,037 trials | +8 residue cases (+19 counting the value without its code) on 1,874; no false positives |
+| Ticket asks explicitly for the field to be corrected | clean task success 47% → 100%; residue conclusions unchanged |
+
+**A trained executor** (experiment 08, Qwen3.5-4B + LoRA, fresh seeds): residue under lineage marks
+71% → 0%, task success 25% → 96%; it held on the six unseen templates
+(69% → 2%) and against laundering, obfuscation and a second hop. On GPT-6 Luna's own handoffs it matched
+Luna's residue after revocation (25% vs 27%, p = 1.0) and completed more tickets
+(67% vs 42%, p = 0.004). It fails when the worker is compromised but **not** revoked
+(75% → 94%): it learned to re-check, not whom to trust.
 
 <img src="docs/figures/fig_residue.png" alt="Residual influence by condition, pooled over the main-grid models with per-model markers, and task success under a false alarm" width="900">
 
@@ -118,9 +130,9 @@ handoffs written without citations and are compared with lineage marks on the sa
 | `revoke_lineage` | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `benign_lineage` (false alarm) | | ✓ | ✓ | ✓ | ✓ |
 
-Ablations (Qwen3.8 27B, Gemma 4 31B, Ministral-3 14B): `early_revoke` (revoked before the writer reads the board), `strict_notice` (the notice extends
+Ablations (GPT-6 Luna, Qwen3.8 27B, Gemma 4 31B, Ministral-3 14B): `early_revoke` (revoked before the writer reads the board), `strict_notice` (the notice extends
 to derived content), `nocite_compromised` / `nocite_lineage` (writer not asked to cite), `nosource_lineage` /
-`nosource_benign` (no `reassign_lookup` tool). Platform mitigations (same three models): `revoke_quarantine` /
+`nosource_benign` (no `reassign_lookup` tool). Platform mitigations (same four models): `revoke_quarantine` /
 `benign_quarantine` (withhold lines that cite worker-X), `taint_lineage` / `taint_quarantine` / `benign_taint_quarantine`
 (locate derived lines by matching worker-X's value and address in no-citation handoffs), and `taint_quarantine_norm` /
 `benign_taint_quarantine_norm` (the same after normalising case, digit grouping, whitespace and dashes).
@@ -143,21 +155,28 @@ Every experiment has its own folder with a `README.md` (question, conditions, pa
 
 | Folder | Question | Models | Trials | Paper |
 |---|---|---|---|---|
-| [`01_main_grid`](experiments/01_main_grid/) | Does revocation remove influence; which mechanism does; false-alarm cost | GPT-6 Luna, gpt-oss-120b, Qwen3.8 27B, Gemma 4 31B, Ministral-3 14B | 1,646 | §4.1, 4.2, 4.4 · Table 1 · Fig. 2 |
-| [`02_ablation_early_revoke`](experiments/02_ablation_early_revoke/) | Does residue require content handed off before revocation? | Qwen, Gemma, Ministral | 144 | §4.3 · Table 2 |
-| [`03_ablation_strict_notice`](experiments/03_ablation_strict_notice/) | Is the notice's weakness its scope? | Qwen, Gemma, Ministral | 144 | §4.3 · Table 2 |
-| [`04_ablation_no_citation`](experiments/04_ablation_no_citation/) | Do lineage marks need recorded provenance? | Qwen, Gemma, Ministral | 288 | §4.3 · Table 2 |
-| [`05_ablation_no_second_source`](experiments/05_ablation_no_second_source/) | Do mitigations and false alarms need a second source? | Qwen, Gemma, Ministral | 288 | §4.3–4.4 · Table 2 |
-| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance (exact and normalised) remove residue for every model, and at what false-alarm cost? | Qwen, Gemma, Ministral | 1,008 | §4.5 · Table 3 · Fig. 3 |
+| [`01_main_grid`](experiments/01_main_grid/) | Does revocation remove influence; which mechanism does; false-alarm cost | GPT-6 Luna, gpt-oss-120b, DeepSeek-V4 Flash, GLM-5.2, Qwen3.8 27B, Gemma 4 31B, Ministral-3 14B | 2,352 | §4.1–4.4 · Table 1 · Fig. 2 |
+| [`02_ablation_early_revoke`](experiments/02_ablation_early_revoke/) | Does residue require content handed off before revocation? | Luna, Qwen, Gemma, Ministral | 192 | §4.3 · Table A |
+| [`03_ablation_strict_notice`](experiments/03_ablation_strict_notice/) | Is the notice's weakness its scope? | Luna, Qwen, Gemma, Ministral | 192 | §4.3 · Table A |
+| [`04_ablation_no_citation`](experiments/04_ablation_no_citation/) | Do lineage marks need recorded provenance? | Luna, Qwen, Gemma, Ministral | 384 | §4.3 · Table A |
+| [`05_ablation_no_second_source`](experiments/05_ablation_no_second_source/) | Do mitigations and false alarms need a second source? | Luna, Qwen, Gemma, Ministral | 384 | §4.3–4.4 · Table A |
+| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance remove residue, at what false-alarm cost? | Luna, Qwen, Gemma, Ministral | 1,344 | §4.5 · Table 3 |
 | [`07_mixed_teams`](experiments/07_mixed_teams/) | Does residue follow the writer or the executor? | Qwen⇒Gemma, Qwen⇒Ministral, Gemma⇒Qwen, Ministral⇒Qwen | 576 | §4.6 · Table A.2 |
-| [`analysis`](experiments/analysis/) | Pooled tables, exact McNemar tests (earlier analysis script) | all | | |
-| **Total** | | | **4,094** | |
+| [`08_training_fix`](experiments/08_training_fix/) | Can a fine-tuned executor remove residue? Stress tests and a paired test against GPT-6 Luna | Qwen3.5-4B base vs LoRA | 2,112 | §4.8 · Appendix |
+| [`09_adaptive_attacker`](experiments/09_adaptive_attacker/) | Does residue survive an attacker that anticipates provenance tracking; does an action gate stop it? | Luna, Qwen, Gemma, Ministral | 2,496 | §4.7 · Table 4 |
+| [`10_two_hop`](experiments/10_two_hop/) | Do mitigations survive a second hop that rewrites the handoff? | Luna, Qwen, Gemma, Ministral | 960 | §4.7 · Table 4 |
+| [`11_more_templates`](experiments/11_more_templates/) | Does the pattern hold on six new ticket templates? | Luna, Qwen, Gemma, Ministral | 1,344 | §4.7 · Appendix |
+| [`12_temperature`](experiments/12_temperature/) | Does it depend on sampling temperature (0.0, 1.0)? | Qwen, Ministral | 768 | §4.7 · Appendix |
+| [`13_explicit_ticket`](experiments/13_explicit_ticket/) | Does an explicit ticket change task success or residue? | Gemma, Qwen | 288 | §4.7 · Appendix |
+| **Total** | | | **13,392** | |
 
 Each `results/<model>/` holds `trials.jsonl` (one graded trial per line), `transcripts/` (the full executor conversation
 for every trial) and `run.log`; `01_main_grid/results/<model>/handoffs.jsonl` holds the cached writer handoffs that the
-ablations reuse. Models: GPT-6 Luna via OpenRouter (302 of 336 trials; its API budget ran out and unpaired trials drop out
-of the tests); Gemma 4 31B-it, Qwen3.8 27B (thinking disabled), Ministral-3 14B-Instruct and gpt-oss-120b (reasoning
-effort low) served with vLLM 0.33 on one H100 on Modal. All systems, addresses and credentials in the testbed are mock.
+later experiments reuse. Models: GPT-6 Luna via OpenRouter; DeepSeek-V4 Flash and GLM-5.2 via the Adaption Responses API
+(no sampling seed; a Qwen3.5 397B run was stopped at 162 of 336 trials and is not analysed); Gemma 4 31B-it,
+Qwen3.8 27B (thinking disabled), Ministral-3 14B-Instruct and gpt-oss-120b (reasoning effort low) served with vLLM 0.33
+on one H100 on Modal; the trained executor runs locally with llama.cpp. All systems, addresses and credentials in the
+testbed are mock.
 
 ## Reproduce
 
@@ -213,13 +232,12 @@ docs/figures/     architecture figure
 
 ## Limitations
 
-The compromised worker is scripted with fixed payloads, so this measures a team's response to a known injection, not an
-adaptive adversary; a paraphrasing agent would defeat taint matching even after normalisation. One writer hop and one
-executor; longer chains and persistent memory are untested. The ablations and platform mitigations were run on three
-open models, not GPT-6 Luna. Repetitions within a template × payload cell often agree, so the effective sample is closer
-to 12 clusters than 48 seeds per cell (the paper reports a template-clustered check). Exact-match grading undercounts
-reformatted residue and task success. See the paper's Limitations and
-Dual-Use appendix.
+The testbed is one scenario family (twelve ticket templates, scripted workers, a mock CRM). The adaptive attacks are two
+hand-written strategies, not an optimised attacker. The action gate assumes the platform knows which field the revoked
+agent was assigned and which transfers the plan allows, and it did not inspect free-text notes, where its remaining
+residue appeared. The trained executor is one 4B model from one training run, and it fails when a compromised worker is
+not revoked. Repetitions within a template often agree, so the paper also reports template-clustered tests. See the
+paper's Limitations and Dual-Use appendix.
 
 ## Citation
 

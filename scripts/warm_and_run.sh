@@ -18,4 +18,5 @@ while time.time() - t < 2700:
     except Exception as e:
         print(f"{time.time()-t:.0f}s waiting {name}: {str(e)[:80]}"); time.sleep(30)
 PY
+[ "${3:-}" = "--wait-only" ] && exit 0  # only wait for the endpoint
 PYTHONPATH=src python -m revres.run --models "modal:$NAME" --seeds 48 --workers 24 --out "$OUT" ${CONDS:+--conditions $CONDS}

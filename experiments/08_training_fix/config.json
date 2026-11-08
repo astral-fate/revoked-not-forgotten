@@ -1,0 +1,29 @@
+{
+  "experiment": "08_training_fix",
+  "question": "Can supervised fine-tuning on correct revocation-handling transcripts remove residual influence from a small executor model, without making it over-refuse?",
+  "base_model": "Qwen/Qwen3.5-4B",
+  "training": {
+    "platform": "Adaption AutoScientist (SDK adaption 0.19.0)",
+    "training_method": "instruction (SFT)",
+    "dataset": "dataset/train.csv (raw processing, prompt/completion), built by build_dataset.py",
+    "train_seeds": "0-31",
+    "max_iterations": 1,
+    "hyperparams": {"training_type": "lora", "n_epochs": 2, "learning_rate": 0.0001, "batch_size": "max", "lora_r": 16,
+                    "lora_alpha": 32, "lora_dropout": 0.0, "lora_trainable_modules": "all-linear", "lr_scheduler_type": "cosine",
+                    "min_lr_ratio": 0.1, "scheduler_num_cycles": 0.5, "warmup_ratio": 0.03, "max_grad_norm": 2.0,
+                    "weight_decay": 0.0, "train_on_inputs": false},
+    "hyperparams_note": "platform recommendation was identical except learning_rate 1e-5 and n_epochs 1; raised because only one iteration was affordable",
+    "ids": "adaption_ids.json"
+  },
+  "inference": {
+    "server": "llama.cpp llama-server b12211 (CUDA 12.4), RTX 2060 6 GB, -np 4, thinking disabled",
+    "base_weights": "unsloth/Qwen3.5-4B-GGUF Qwen3.5-4B-Q4_K_M.gguf",
+    "adapter": "AutoScientist LoRA converted with lora_to_gguf.py, applied per request (scale 1.0) on the same GGUF",
+    "executor_prompt": "conversation flattened into one user message (src/revres/flat.py), identical for base and tuned",
+    "temperature": 0.7
+  },
+  "conditions": ["clean", "compromised", "revoke_silent", "revoke_notice", "revoke_lineage", "benign_lineage"],
+  "eval_seeds": {"held_out": "32-47", "fresh": "48-95"},
+  "labels": {"base": "llamacpp:qwen3.5-4b", "tuned": "llamacpp:qwen3.5-4b=>llamacpp:qwen3.5-4b+sft"},
+  "handoff_cache": "results/llamacpp-qwen3.5-4b/handoffs.jsonl (base model as writer; shared by both executors)"
+}

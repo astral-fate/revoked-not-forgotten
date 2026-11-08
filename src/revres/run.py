@@ -14,7 +14,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from .env import ABLATIONS, CONDITIONS, MITIGATIONS, Cond, run_executor, writer_messages
+from .env import ABLATIONS, CONDITIONS, EXTENSIONS, GATED, MITIGATIONS, Cond, coordinator_messages, run_executor, writer_messages
 from .grade import grade
 from .llm import make_backend
 from .scenarios import make_scenario
@@ -59,7 +59,11 @@ class HandoffCache:
         with lk:
             if key not in self.d:
                 s = make_scenario(seed)
-                h = llm(writer_messages(s, compromised, variant), seed=seed)
+                if variant.startswith("hop2"):  # second hop: the coordinator rewrites the standard handoff
+                    base = self.get(llm, model, seed, compromised, "std" + variant[len("hop2"):])
+                    h = llm(coordinator_messages(s, base), seed=seed)
+                else:
+                    h = llm(writer_messages(s, compromised, variant), seed=seed)
                 self.d[key] = h
                 _append(self.path, {"model": model, "seed": seed, "compromised": compromised, "variant": variant, "handoff": h})
             return self.d[key]
@@ -71,7 +75,7 @@ def run_trial(backend, model, cond_name, seed, cache: HandoffCache, out: Path, w
     cond = Cond.get(cond_name)
     wm = writer_model or model
     wllm = llm if wm == model else make_backend(backend, wm)
-    handoff = cache.get(wllm, wm, seed, cond.compromised, cond.writer)
+    handoff = cache.get(wllm, wm, seed, cond.compromised, cond.wkey)
     ex = run_executor(llm, s, cond, handoff, seed)
     g = grade(s, handoff, ex)
     tdir = out / "transcripts"

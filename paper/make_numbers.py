@@ -45,13 +45,18 @@ NICE = {  # id -> (display name, macro slug)
     "qwen3.8-27b": ("Qwen3.8 27B", "qwen"),
     "gemma-4-31b-it": ("Gemma 4 31B", "gemma"),
     "ministral-3-14b": ("Ministral 3 14B", "ministral"),
+    "glm-5.2": ("GLM-5.2", "glm"),
+    "deepseek-v4-flash": ("DeepSeek-V4 Flash", "dsflash"),
+    "qwen3.5-397b": ("Qwen3.5 397B", "qwenbig"),
 }
-SHORT = {"luna": "Luna", "oss": "gpt-oss", "qwen": "Qwen", "gemma": "Gemma", "ministral": "Ministral"}
-MODEL_ORDER = ["luna", "oss", "qwen", "gemma", "ministral"]
+SHORT = {"luna": "Luna", "oss": "gpt-oss", "qwen": "Qwen", "gemma": "Gemma", "ministral": "Ministral", "glm": "GLM",
+         "dsflash": "DeepSeek", "qwenbig": "Qwen-397B"}
+MODEL_ORDER = ["luna", "oss", "dsflash", "qwenbig", "glm", "qwen", "gemma", "ministral"]
 MIT_ORDER = ["revoke_quarantine", "taint_lineage", "taint_quarantine", "taint_quarantine_norm", "benign_quarantine",
              "benign_taint_quarantine", "benign_taint_quarantine_norm"]
 HFID = {"luna": "openai/gpt-6-luna", "oss": "openai/gpt-oss-120b", "qwen": "Qwen/Qwen3.8-27B",
-        "gemma": "google/gemma-4-31B-it", "ministral": "mistralai/Ministral-3-14B-Instruct-2512"}
+        "gemma": "google/gemma-4-31B-it", "ministral": "mistralai/Ministral-3-14B-Instruct-2512",
+        "glm": "glm-5.2 (Adaption)", "dsflash": "deepseek-v4-flash (Adaption)", "qwenbig": "qwen3.5-397b (Adaption)"}
 # Pre-specified confirmatory contrasts (A -> B, metric); Holm-corrected within each model over those available for it.
 CONFIRM = [("compromised", "revoke_silent", "any"), ("revoke_silent", "revoke_notice", "any"),
            ("revoke_notice", "revoke_retract", "any"), ("revoke_retract", "revoke_lineage", "any"),
@@ -347,6 +352,8 @@ def main():
     exp_cells = defaultdict(list)  # experiment prefix ("01") -> complete cells
     for tj in sorted(EXP.glob("*/results/*/trials.jsonl")):
         exp_dir = tj.parents[2]
+        if exp_dir.name[:2] >= "08":  # experiments 08-13 reuse condition names on other seeds/settings: paper/make_ext.py
+            continue
         cfg = exp_dir / "config.json"
         seeds = json.loads(cfg.read_text(encoding="utf-8")).get("seeds", 48) if cfg.exists() else 48
         grp = defaultdict(list)

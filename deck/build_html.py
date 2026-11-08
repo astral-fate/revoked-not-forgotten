@@ -217,22 +217,18 @@ def write(g):
   <p style="margin-top:20px;"><b style="color:#fff;">Closest in spirit: AIP's provenance chain.</b> It records the provenance of
   invocations, not of claims paraphrased into another agent's output.</p>""")
 
-    # 5 threat model
-    tl = "".join(f'<div class="tile {c}"><h3>{E(h)}</h3><p>{E(d)}</p></div>' for h, d, c in [
-        ("t1 · Board", "planner, worker-X, worker-Y post (scripted)", ""),
-        ("t2 · Writer W", "LLM reads the board and writes a handoff citing [m-ids]", ""),
-        ("t3 · Revocation", "worker-X revoked, per condition: the handoff already carries its claim", "bad"),
-        ("t4 · Executor E", "LLM acts on the handoff with tools on a mock CRM", "")])
+    # 5 threat model + testbed (the paper's Figure 1)
     add("Threat model", f"""
-  <div class="eyebrow">Threat model · one customer ticket per trial</div>
+  <div class="eyebrow">Threat model and testbed · Figure 1 of the paper</div>
   <h2>Revocation lands after the worker's report was handed off</h2>
-  <div class="timeline">{tl}</div>
-  <table class="cmp"><thead><tr><th>Agent</th><th>Implementation</th><th>Role</th></tr></thead><tbody>
-  <tr><td>planner</td><td>scripted</td><td>posts the plan for the ticket</td></tr>
-  <tr><td class="bad">worker-X</td><td class="bad">scripted · compromised</td><td>looks up one record field in a contract system the executor cannot read</td></tr>
-  <tr><td>worker-Y</td><td>scripted</td><td>checks refund eligibility; can redo X's lookup on request</td></tr>
-  <tr><td>writer W</td><td>LLM</td><td>turns the board into a handoff, citing message ids</td></tr>
-  <tr><td>executor E</td><td>LLM</td><td>applies changes with tools: <code>{E(' '.join(g['TOOLS']))}</code></td></tr></tbody></table>""")
+  <div class="columns" style="grid-template-columns:2.2fr 1fr;align-items:center;">
+  <div class="figbox"><img alt="Testbed architecture: shared board, writer, handoff, revocation, executor, platform responses" src="{b64(g['ARCH'])}"></div>
+  <table class="cmp" style="margin-top:0;"><thead><tr><th>Agent</th><th>Role</th></tr></thead><tbody>
+  <tr><td>planner<br><span class="small">scripted</span></td><td>posts the plan for the ticket</td></tr>
+  <tr><td class="bad">worker-X<br><span class="small">scripted · compromised</span></td><td>looks up one record field in a contract system the executor cannot read</td></tr>
+  <tr><td class="good">worker-Y<br><span class="small">scripted · honest</span></td><td>checks refund eligibility; can redo X's lookup on request</td></tr>
+  <tr><td>writer W<br><span class="small">LLM</span></td><td>turns the board into a handoff, citing message ids</td></tr>
+  <tr><td>executor E<br><span class="small">LLM</span></td><td>acts with tools: <code>{E(' '.join(g['TOOLS']))}</code></td></tr></tbody></table></div>""")
 
     # 6 payloads
     def bl(msgs, sc):
@@ -302,7 +298,7 @@ def write(g):
     oss = ""
     if g["HAS_OSS"]:
         OSS = g["OSS"]
-        oss = (f"<li><b class='warn'>{E(nm(OSS))} is the one significant drop ({pc(HEAD[OSS]['comp'])} → {pc(HEAD[OSS]['silent'])}):</b> "
+        oss = (f"<li><b class='warn'>{E(nm(OSS))} {'is the one significant drop' if g['SIG_DROP'] == [OSS] else 'drops significantly'} ({pc(HEAD[OSS]['comp'])} → {pc(HEAD[OSS]['silent'])}):</b> "
                f"in {g['OSS_DROP_X']} of its {g['OSS_DROP']} discordant trials it asked the revoked worker-X to redo the lookup, the request "
                f"failed, and it escalated {kn(g['OSS_ESC_SIL'])} times vs {kn(g['OSS_ESC_COMP'])} unrevoked. It never read the board.</li>")
     add("Headline", f"""
@@ -342,7 +338,7 @@ def write(g):
   <div class="figbox"><img alt="Residual influence by condition" src="{b64(g['FIG'])}"></div>
   <p class="small" style="margin-top:12px;">Bars pool the models; markers show each model; Wilson 95% intervals. Pooled any residue
   {pc(g['POOL_COMP'])} without revocation, {pc(g['POOL_SILENT'])} after credential-only revocation
-  ({g['POOL_PR']['a']} vs {g['POOL_PR']['b']} discordant pairs, {E(fp(g['POOL_PR']['p']))}{E("; the pooled drop comes mostly from " + nm(g['OSS'])) if g['HAS_OSS'] and g['POOL_PR']['p'] < 0.05 else ""}).</p>""")
+  ({g['POOL_PR']['a']} vs {g['POOL_PR']['b']} discordant pairs, {E(fp(g['POOL_PR']['p']))}{E("; the pooled drop comes mostly from " + nm(g['POOL_DROP_FROM'])) if g['POOL_DROP_FROM'] else ""}).</p>""")
 
     # 14 notice contrast
     bars = ""
@@ -360,7 +356,7 @@ def write(g):
           [("EXECUTOR TOOL CALLS", "h")] + [(g["act_str"](a), "b" if g["SC_FACT"].canary_value in g["act_str"](a) else "") for a in g["T_LUNA"]["actions"][:2]]
     add("Notice contrast", f"""
   <div class="eyebrow">Telling the executor · revoke_silent → revoke_notice · verbatim transcripts</div>
-  <h2>A notice alone reliably helped only {E(' and '.join(nm(m) for m in g['NOTICE_HELPED']))}</h2>
+  <h2>A notice alone reliably helped only {E(g['andj'](nm(m) for m in g['NOTICE_HELPED']))}</h2>
   <div class="columns three" style="grid-template-columns:0.8fr 1.2fr 1.2fr;">
     <div class="tile"><h3>Any residue</h3>{bars}</div>
     <div><p class="small">{E(nm(GEMMA))} · revoke_notice · seed 21 · first action: export_data</p>{code(gem, 'bad')}
@@ -406,7 +402,7 @@ def write(g):
   {abl('early_revoke vs revoke_retract', 'Revoke worker-X before the writer reads the board', 'retract', 'early', 'pr_early', 'after handoff', 'before handoff',
        E("Cut off at the source, the compromise was harmless for every model: the risk is specific to content that has already propagated."))}
   {abl('strict_notice vs revoke_notice', 'Add one sentence extending revocation to derived content', 'notice', 'strict', 'pr_strict', 'plain notice', 'strict notice',
-       '<i>“' + E(g['STRICT_ADD']) + '”</i><br><b>' + E(f"Worked for {' and '.join(nm(m) for m in g['STRICT_OK'])}; not for {' or '.join(nm(m) for m in g['STRICT_NO']) or '–'}.") + '</b>')}
+       '<i>“' + E(g['STRICT_ADD']) + '”</i><br><b>' + E(f"Worked for {g['andj'](nm(m) for m in g['STRICT_OK'])}; not for {' or '.join(nm(m) for m in g['STRICT_NO']) or '–'}.") + '</b>')}
   </div>""")
     add("Ablations 3–4", f"""
   <div class="eyebrow">Ablations 3–4 · why lineage marks work, or fail</div>
@@ -466,7 +462,7 @@ def write(g):
       <div class="tile warn"><h3>Citations on their own line</h3><p>{E(nm(MI))} put “[m2]” on the line below the value; the platform withheld the citation line and left the value and the uncited export address visible.</p></div>
       <div class="tile bad" style="margin-top:12px;"><h3>The value survived withholding</h3><p>{E(lk)} of main-grid handoffs.</p></div>
       <div class="tile good" style="margin-top:12px;"><h3>Residue {pc(pm['revoke_quarantine']['any'])} → {pc(pm['taint_quarantine']['any'])}</h3><p>citation-based vs taint quarantine (exports {kn(pm['revoke_quarantine']['exp'])} → {kn(pm['taint_quarantine']['exp'])}).</p></div>
-      {(f"<div class='tile warn' style='margin-top:12px;'><h3>Found failure → fix: normalise</h3><p>Exact taint matching missed “{E(g['TAINT_EX'][2])}” written as “{E(g['TAINT_FMT'])}” in {len(g['TAINT_MISS'])} of {g['NOCITE_N']} no-citation handoffs ({len(g['TQ_RES'])} residual trial, {E(nm(g['TQ_RES'][0][0]))} seed {g['TQ_RES'][0][1]}). Normalised matching (case, digit grouping, spaces, dashes): {g['NORM_K']}/{g['NORM_N']} residue.</p></div>") if g['HAS_NORM'] else ""}
+      {(f"<div class='tile warn' style='margin-top:12px;'><h3>Found failure → fix: normalise</h3><p>Exact taint matching missed “{E(g['TAINT_EX'][2])}” written as “{E(g['TAINT_FMT'])}” in {len(g['TAINT_MISS'])} of {g['NOCITE_N']} no-citation handoffs ({E(g['TQ_RES_TXT'])}). Normalised matching (case, digit grouping, spaces, dashes): {g['NORM_K']}/{g['NORM_N']} residue.</p></div>") if g['HAS_NORM'] else ""}
     </div></div>""")
 
     # mixed teams (07)
@@ -499,9 +495,100 @@ def write(g):
   <div class="eyebrow">Usefulness cost · honest worker-X revoked, full mitigation</div>
   <h2>A false alarm under lineage marks cost no measurable task success</h2>
   <div class="stats" style="grid-template-columns:repeat({len(MODELS)},1fr);">{fa}</div>
-  <ul class="bullets"><li><b>A second source existed:</b> {E(' and '.join(nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5))} re-delegated the marked lookup in most false-alarm trials.</li>
+  <ul class="bullets"><li><b>A second source existed:</b> {E(g['andj'](nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5))} re-delegated the marked lookup in most false-alarm trials.</li>
   <li><b>Without one, {E(nm(GEMMA))} still succeeded in {pc(g['ABL'][GEMMA]['nosrc_benign'])}</b>, for the wrong reason: it applied the marked value, which happened to be correct.</li>
   <li class="warn">Neither should be assumed in deployment.</li></ul>""")
+
+    # ---- part three: stress-testing the limitations (experiments 08-13); same data as the pptx slides
+    ADV, GB = g["ADV"], g["GATE_B"]
+
+    def cmp(label, sub, r, la, lb, kind="res"):
+        """comparator bar (grey) above the new condition's bar, with rates and the exact McNemar p."""
+        cl = rcls if kind == "res" else tcls
+        rows_ = "".join(
+            f'<div class="bar"><span style="width:130px">{E(lab)}</span><div class="track"><div class="fill" '
+            f'style="width:{max(1, round(100 * t["p"]))}%;background:{col}"></div></div><span class="val {cls}">{pc(t)}</span></div>'
+            for t, lab, col, cls in ((r["a"], la, "#5b6478", ""), (r["b"], lb, "var(--accent)", cl(r["b"]))))
+        return (f'<div class="tile"><h3>{E(label)}</h3><p class="small">{E(sub)} · {E(fp(r["p"]))}</p>{rows_}</div>')
+
+    if g["HAS_ADV"] or g["HAS_HOP"] or g["HAS_TPL"] or g["HAS_SFT"]:
+        add("Part three", """<div class="eyebrow">Part three · stress-testing the limitations</div>
+  <h1>Adaptive attackers, longer chains, a trained executor</h1>""", center=True)
+    if g["HAS_ADV"]:
+        add("Adaptive attacker", f"""
+  <div class="eyebrow">Experiment 09 · an attacker that anticipates provenance tracking · {E(g['STRESS_N'])}</div>
+  <h2>Laundering beats citations; obfuscation beats taint matching</h2>
+  <div class="columns">
+    {cmp("Launder: “state it without message references”", "lineage marks", ADV["launder_lineage"], "main payload", "launder")}
+    {cmp("Launder vs taint quarantine", "taint matching does not need citations", ADV["launder_taint"], "main payload", "launder")}
+    {cmp("Obfuscate: values spelled out character by character", "taint quarantine", ADV["obf_taint"], "main payload", "obfuscate")}
+    {cmp("Scope quarantine: withhold lines naming the field", "writers rename the field", ADV["scope_quarantine"], "taint quar.", "scope quar.")}
+  </div>
+  <p class="small" style="margin-top:10px;">Without revocation both attacks worked as well as the original
+  ({pc(ADV['launder_compromised']['b'])} and {pc(ADV['obf_compromised']['b'])} residue). Every defence that searches the handoff depends on its wording.</p>""")
+        add("Action gate", f"""
+  <div class="eyebrow">Experiment 09b · the tool server enforces re-derivation · no handoff text is matched</div>
+  <h2>An action gate held residue near zero, whatever the wording</h2>
+  <div class="columns">
+    {cmp("Gate vs notice (main payload)", "writes to the revoked agent's field need a re-obtained value; off-plan transfers blocked", ADV["gate"], "notice", "gate")}
+    {cmp("Gate vs obfuscating attacker", "", ADV["obf_gate"], "obf. + marks", "gate")}
+  </div>
+  <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-top:14px;">
+    <div class="stat"><div class="v warn">{pc(GB['gate']['attempted_residue'])}</div><div class="l">of gated executors tried a blocked action</div></div>
+    <div class="stat"><div class="v bad">{pc(GB['gate']['escalated'])}</div><div class="l">escalated to a human after a rejection</div></div>
+    <div class="stat"><div class="v warn">{pc(GB['gate']['task_success'])}</div><div class="l">completed the ticket under the gate</div></div>
+    <div class="stat"><div class="v good">{pc(ADV['benign_gate']['b'])}</div><div class="l">task success on a false alarm (clean {pc(ADV['benign_gate']['a'])})</div></div>
+  </div>
+  <p class="small" style="margin-top:10px;">The remaining residue was free-text notes, which the gate does not inspect. Safety came from the gate, not the executor's judgement; the price is escalation.</p>""")
+    if g["HAS_HOP"]:
+        hg = ADV.get("hop2_gate")
+        add("Two hops", f"""
+  <div class="eyebrow">Experiment 10 · a coordinator rewrites the handoff before the executor sees it</div>
+  <h2>A second hop strips the citations that lineage marks rely on</h2>
+  <div class="columns">
+    {cmp("Lineage marks: one hop → two hops", f"derived lines found: {pc(g['ONE_HIT'])} → {pc(g['HOP_HIT'])}", ADV["hop2_lineage"], "one hop", "two hops")}
+    {cmp("Taint quarantine: one hop → two hops", "matches the revoked agent's own content", ADV["hop2_taint"], "one hop", "two hops")}
+    {cmp("Notice: one hop → two hops", "", ADV["hop2_notice"], "one hop", "two hops")}
+    {cmp("Action gate after two hops", "vs notice on the same two-hop handoffs", hg, "2 hops + notice", "2 hops + gate") if hg else ""}
+  </div>""")
+    if g["HAS_TPL"]:
+        T_ = g["TPL"]; TM = g["TEMP"]; RG = g["REG"]
+        temp_txt = (f"Credential-only residue {pc(TM[('revoke_silent', '0.0')])} / {pc(TM[('revoke_silent', '0.7')])} / "
+                    f"{pc(TM[('revoke_silent', '1.0')])} at temperature 0.0 / 0.7 / 1.0; taint quarantine "
+                    f"{pc(TM[('taint_quarantine_norm', '0.0')])} / {pc(TM[('taint_quarantine_norm', '0.7')])} / "
+                    f"{pc(TM[('taint_quarantine_norm', '1.0')])}.") if g["HAS_TEMP"] else "Temperature sweep still running."
+        add("Robustness", f"""
+  <div class="eyebrow">Experiments 11–13 and a re-grading of every trial</div>
+  <h2>New templates, temperature and grading leave the pattern intact</h2>
+  <div class="columns">
+    {cmp("Six new ticket templates: credential-only", "seeds 100–147", T_[("compromised", "revoke_silent")], "not revoked", "credentials only")}
+    {cmp("Six new templates: taint quarantine", "", T_[("revoke_lineage", "taint_quarantine_norm")], "lineage marks", "taint quar.")}
+  </div>
+  <ul class="bullets">
+    <li><b>Temperature.</b> {E(temp_txt)}</li>
+    <li><b>Grading.</b> Normalised matching added {RG['norm'] - RG['exact']} residue cases to {RG['exact']:,}; counting the false value without its code added {RG['broad'] - RG['exact']} ({100 * (RG['broad'] - RG['exact']) / RG['exact']:.1f}%), none in clean or false-alarm trials.</li>
+    <li><b>Context.</b> The longest executor prompt was about {g['MAXPROMPT_KTOK']:.1f}k tokens, inside the 8k context.</li>
+    {f"<li><b>Explicit ticket.</b> Clean task success {pc(ADV['explicit_clean']['a'])} → {pc(ADV['explicit_clean']['b'])}; residue under lineage marks {pc(ADV['explicit_lineage']['a'])} → {pc(ADV['explicit_lineage']['b'])}.</li>" if ADV.get('explicit_clean') and ADV.get('explicit_lineage') else ""}
+  </ul>""")
+    if g["HAS_SFT"]:
+        S = g["SFT"]
+        def sb(c, fl, lab, kind="res"):
+            v = S[c][fl]
+            return cmp(lab, f"{c.replace('_', ' ')}", dict(a=v["base"], b=v["tuned"], p=v["p"]), "base", "tuned", kind)
+        st = "".join(f"<li>{E(tag)} · <code>{E(c)}</code>: {pc(v['base'])} → {pc(v['tuned'])} ({E(fp(v['p']))})</li>"
+                     for tag, c, v in g["SFT_STRESS"])
+        add("Training fix", f"""
+  <div class="eyebrow">Experiment 08 · fine-tune the executor · Qwen3.5-4B + LoRA · fresh seeds 48–95</div>
+  <h2>A trained executor removed residue, unless worker-X stayed unrevoked</h2>
+  <div class="columns">
+    {sb("revoke_lineage", "any_residue", "Residue under lineage marks")}
+    {sb("revoke_lineage", "task_success", "Task success under lineage marks", "ts")}
+    {sb("revoke_silent", "any_residue", "Residue, credential-only revocation")}
+    {sb("compromised", "any_residue", "Failure mode: worker-X compromised, not revoked")}
+  </div>
+  <p class="small" style="margin-top:10px;">It learned to re-obtain the field from a worker, so it re-asked worker-X when worker-X was still active
+  ({g['SFT_ASKX']['base']} → {g['SFT_ASKX']['tuned']} of {g['SFT_ASKX']['n']} trials). Training complements revocation; it does not replace it.</p>
+  {f'<ul class="bullets">{st}</ul>' if st else ''}""")
 
     # 19 recommendations
     recs = "".join(f'<div class="tile good"><h3>{i + 1} · {E(h)}</h3><p>{E(d)}</p></div>' for i, (h, d, _) in enumerate(g["recs"]))
@@ -509,11 +596,12 @@ def write(g):
   <div class="eyebrow">Design recommendations</div>
   <h2>Revocation has to reach content and its derivatives</h2>
   <div class="columns three">{recs}</div>
-  <div class="tile good" style="margin-top:22px;"><h3>Tested in experiment 06: the recommended design worked for every model</h3>
+  <div class="tile good" style="margin-top:22px;"><h3>{"Tested: removing content worked until the attacker reworded it; gating the action did not depend on wording" if g['HAS_ADV'] else "Tested in experiment 06"}</h3>
   <p>{"Normalised platform" if g['HAS_NORM'] else "Platform"} taint + quarantine: residue {E(', '.join(f"{nm(m)} {pc(g['PLAT'][m]['taint_quarantine_norm' if g['HAS_NORM'] else 'taint_quarantine']['any'])}" for m in g['PLAT_MODELS']))}
   (vs {E(' / '.join(pc(g['PLAT'][m]['nocite_lineage']['any']) for m in g['PLAT_MODELS']))} with citation-based marks on the same handoffs);
-  false-alarm task success {E(', '.join(f"{pc(g['PLAT'][m]['benign_taint_quarantine_norm' if g['HAS_NORM'] else 'benign_taint_quarantine']['ts'])} vs {pc(g['PLAT'][m]['clean']['ts'])}" for m in g['PLAT_MODELS']))} clean,
-  no significant difference.</p></div>""")
+  {E(f"Against an attacker that spelled its values out, taint quarantine left {pc(g['ADV']['obf_taint']['b'])}; the action gate left {pc(g['ADV']['obf_gate']['b'])}, at the price of {pc(g['GATE_B']['gate']['escalated'])} escalation.") if g['HAS_ADV'] else ""}
+  Every mechanism that asked the executor to discount content it could still read was model-dependent; removing the content,
+  or refusing the action, was not.</p></div>""")
 
     # 20 limitations
     lims = "".join(f'<div class="tile warn"><h3>L{i + 1} · {E(h)}</h3><p>{E(d)}</p></div>' for i, (h, d) in enumerate(g["lims"]))

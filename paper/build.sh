@@ -3,4 +3,5 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 python make_numbers.py
+python make_ext.py
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex

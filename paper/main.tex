@@ -26,6 +26,7 @@
 \setlist{itemsep=1pt,topsep=3pt}
 
 \input{numbers}
+\input{numbers_ext}
 % shorthands over the generated numbers
 \newcommand{\R}[2]{\N{#1/#2/any/pct}}            % any-residue percentage of model #1 in condition #2
 \newcommand{\Rk}[3]{\N{#1/#2/#3}}                % k/n (pct) of metric #3
@@ -52,7 +53,7 @@ Apart Research\\[14pt]
 \vspace{-4pt}
 \begin{quote}
 \small
-Agent-identity infrastructure answers a compromised agent with revocation: heartbeat-bound credentials and attenuating delegation tokens guarantee that a revoked agent can no longer act. They do not address what the agent already did. In agent teams, a compromised worker's findings are read, summarised and handed on before it is revoked. We call the effect of that handed-off content after revocation \emph{residual influence} and measure it in a controlled testbed: a scripted worker plants a false record value and, optionally, a data-export request; a language-model writer folds the team board into a handoff; the platform revokes the worker; and a language-model executor acts on the handoff with tools. Across \N{n/trials} paired, deterministically graded trials with \N{n/models/word} models, credential-only revocation left residual influence nearly unchanged (\N{all/compromised/any/pct} of trials without revocation, \N{all/revoke_silent/any/pct} after). A revocation notice reduced it significantly only for \N{mcsigname/revoke_silent/revoke_notice/any}, retracting the worker's posts added nothing, and lineage marks on derived handoff lines left \N{mainrange/revoke_lineage/any} residue depending on the model. \IfN{have/platform}{When the platform located derived lines by matching the revoked worker's own content and withheld them until re-obtained, residue fell from \N{mitrange/nocite_lineage/any} to \N{mitrange/taint_quarantine/any} for \N{n/mitmodels/word} open models. Its one failure, a reformatted value that exact matching missed, was removed by normalised matching (\N{mitsum/taint_quarantine_norm/any} trials with residue). False-alarm costs in task success were not statistically detectable at 48 trials per model, but lower 95\% bounds reach \IfN{minlo/clean/benign_taint_quarantine_norm/task}{\N{minlo/clean/benign_taint_quarantine_norm/task}}{\N{minlo/clean/benign_taint_quarantine/task}} points.}{\todo{platform-mitigation sentence}} Revocation for agent teams has to reach content and its derivatives, enforced by the platform.
+Agent-identity infrastructure answers a compromised agent with revocation: heartbeat-bound credentials and attenuating delegation tokens guarantee that a revoked agent can no longer act. They do not address what the agent already did. In agent teams, a compromised worker's findings are read, summarised and handed on before it is revoked. We call the effect of that handed-off content after revocation \emph{residual influence} and measure it in a controlled testbed: a scripted worker plants a false record value and, optionally, a data-export request; a language-model writer folds the team board into a handoff; the platform revokes the worker; and a language-model executor acts on the handoff with tools. Across \N{n/trials} paired, deterministically graded trials with \N{n/models/word} models, credential-only revocation left residual influence nearly unchanged (\N{all/compromised/any/pct} of trials without revocation, \N{all/revoke_silent/any/pct} after). A revocation notice reduced it significantly only for \N{mcsigname/revoke_silent/revoke_notice/any}, retracting the worker's posts added nothing, and lineage marks on derived handoff lines left \N{mainrange/revoke_lineage/any} residue depending on the model. \IfN{have/platform}{When the platform located derived lines by matching the revoked worker's own content and withheld them until re-obtained, residue fell from \N{mitrange/nocite_lineage/any} to \N{mitrange/taint_quarantine/any} for \N{n/mitmodels/word} models. An attacker that spelled its values out defeated this matching (\N{x/obftaint/bpct} residue); rejecting writes and transfers that had not been re-derived, at the tool server, did not depend on wording and held residue at \N{x/gate/bpct}, at the cost of more escalation.}{\todo{platform-mitigation sentence}} Revocation for agent teams has to reach content and the actions derived from it, enforced by the platform.
 \end{quote}
 
 
@@ -92,7 +93,7 @@ Each trial is a customer ticket worked by five agents on a shared board (Figure~
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{../docs/figures/architecture.png}
+\includegraphics[width=0.8\textwidth]{../docs/figures/architecture.png}
 \caption{\textbf{Testbed.} Scripted agents post to a shared board; the LLM writer folds it into a cited handoff (cached per model and seed). At t3 worker-X's credentials are revoked, but the handoff already carries its content. The LLM executor acts on the handoff with tools and can have worker-Y redo worker-X's lookup; the outcome is graded by exact match. Bottom: the platform responses compared, from credentials only to taint provenance, which finds worker-X's content in the handoff and withholds it.}
 \label{fig:arch}
 \end{figure}
@@ -110,7 +111,7 @@ Table~\ref{tab:experiments} (Appendix~\ref{app:results}) lists every experiment.
 \label{sec:design}
 The writer's handoff depends only on the model, the seed, whether worker-X is compromised and the writer variant (standard, no-citation, or early revocation). It is generated once per (model, seed, compromise, variant), cached and reused. Conditions that share a writer variant therefore pair on the identical handoff, and their differences are attributable to the platform's response; \cond{early_revoke} and the no-citation conditions use different handoffs and pair with main-grid conditions on seed (scenario) only.
 
-The same model serves as writer and executor except in the mixed teams. We evaluate GPT-6 Luna (\texttt{openai/gpt-6-luna}, through OpenRouter) and the open-weight models Gemma 4 31B-it (\texttt{google/gemma-4-31B-it}), Qwen3.8 27B (\texttt{Qwen/Qwen3.8-27B}, thinking disabled)\IfN{oss/name}{, Ministral 3 14B (\texttt{mistralai/Ministral-3-14B-Instruct-2512}) and gpt-oss-120b (\texttt{openai/gpt-oss-120b}, reasoning effort low)}{ and Ministral 3 14B (\texttt{mistralai/Ministral-3-14B-Instruct-2512})}, each served with vLLM 0.33.0 on one NVIDIA H100 with an 8,192-token context and an FP8 key-value cache. Sampling uses temperature 0.7 with the trial seed passed to the server. Each condition has 48 seeds (6 templates $\times$ 2 payloads $\times$ 4 repetitions). GPT-6 Luna completed \N{luna/n/main} of the \N{n/planned/main} main-grid trials before its API budget was exhausted and was not run on the further experiments; paired tests use only pairs complete in both conditions.
+The same model serves as writer and executor except in the mixed teams. We evaluate GPT-6 Luna (\texttt{openai/gpt-6-luna}, through OpenRouter) and the open-weight models Gemma 4 31B-it (\texttt{google/gemma-4-31B-it}), Qwen3.8 27B (\texttt{Qwen/Qwen3.8-27B}, thinking disabled)\IfN{oss/name}{, Ministral 3 14B (\texttt{mistralai/Ministral-3-14B-Instruct-2512}) and gpt-oss-120b (\texttt{openai/gpt-oss-120b}, reasoning effort low)}{ and Ministral 3 14B (\texttt{mistralai/Ministral-3-14B-Instruct-2512})}, each served with vLLM 0.33.0 on one NVIDIA H100 with an 8,192-token context and an FP8 key-value cache. Sampling uses temperature 0.7 with the trial seed passed to the server. Each condition has 48 seeds (6 templates $\times$ 2 payloads $\times$ 4 repetitions). \IfN{glm/revoke_silent/any/pct}{GLM-5.2 runs through the Adaption Responses API, which takes no sampling seed, so for it the seed fixes the scenario and the pairing but not the sampling. }{}Paired tests use only pairs complete in both conditions.
 
 We compare conditions with exact McNemar tests on (model, seed) pairs and report paired differences with Newcombe's 95\% interval. Six contrasts per model were declared confirmatory: \cond{compromised}$\to$\cond{revoke_silent}, \cond{revoke_silent}$\to$\cond{revoke_notice}, \cond{revoke_notice}$\to$\cond{revoke_retract} and \cond{revoke_retract}$\to$\cond{revoke_lineage} (residue); \cond{nocite_lineage}$\to$\cond{taint_quarantine} (residue); and \cond{clean}$\to$\cond{benign_taint_quarantine} (task success). They are Holm-corrected within each model. The other \N{n/tests/explo} tests are exploratory and Benjamini--Hochberg-corrected together. Every $p$ in the text is adjusted ($p_{\text{adj}}$), and ``significant'' means $p_{\text{adj}}<0.05$; raw and adjusted values are in Table~\ref{tab:mcnemar}.
 
@@ -126,7 +127,7 @@ Table~\ref{tab:main} summarises the main grid and Figure~\ref{fig:residue} shows
 \begin{adjustbox}{max width=\textwidth}
 \input{tab_main}
 \end{adjustbox}
-\caption{Main grid (\%). Res.: any residue (48 trials per cell; GPT-6 Luna 42--45). Exp.: export to the attacker address among fact+exfil trials (24 per cell; Luna 18--21). Task: task success. Pooled: all models (descriptive). Counts and intervals: Appendix~\ref{app:results}.}
+\caption{Main grid (\%). Res.: any residue (48 trials per cell). Exp.: export to the attacker address among fact+exfil trials (24 per cell). Task: task success. Pooled: all models (descriptive). Counts and intervals: Appendix~\ref{app:results}.}
 \label{tab:main}
 \end{table}
 
@@ -143,7 +144,7 @@ Revoking worker-X's credentials without telling anyone left most residue in plac
 
 \subsection{Notice, retraction and lineage marks: the response depends on the model}
 \label{sec:mechanisms}
-\paragraph{Notice.} A platform notice reduced GPT-6 Luna's residue from \R{luna}{revoke_silent} to \R{luna}{revoke_notice} and raised its task success from \N{luna/revoke_silent/task/pct} to \N{luna/revoke_notice/task/pct}, largely because the executor re-delegated the revoked worker's lookup to the honest worker (\N{luna/revoke_notice/redeleg/pct} of trials, up from \N{luna/revoke_silent/redeleg/pct}). It was the only model with a significant reduction; the others stayed between \R{oss}{revoke_notice} and \R{gemma}{revoke_notice} (Table~\ref{tab:main}). Gemma 4 31B exported the record to the attacker address in \N{gemma/revoke_notice/export/k} of \N{gemma/revoke_notice/export/n} fact+exfil trials after being told that the worker who requested the export was compromised (Figure~\ref{fig:example}).
+\paragraph{Notice.} A platform notice reduced GPT-6 Luna's residue from \R{luna}{revoke_silent} to \R{luna}{revoke_notice} and raised its task success from \N{luna/revoke_silent/task/pct} to \N{luna/revoke_notice/task/pct}, largely because the executor re-delegated the revoked worker's lookup to the honest worker (\N{luna/revoke_notice/redeleg/pct} of trials, up from \N{luna/revoke_silent/redeleg/pct}). The reduction was significant only for \N{mcsigname/revoke_silent/revoke_notice/any}\IfN{glm/revoke_notice/any/pct}{ (GLM-5.2: \R{glm}{revoke_silent} to \R{glm}{revoke_notice})}{}; the other models stayed between \R{oss}{revoke_notice} and \IfN{dsflash/revoke_notice/any/pct}{\R{dsflash}{revoke_notice}}{\R{gemma}{revoke_notice}} (Table~\ref{tab:main}). Gemma 4 31B exported the record to the attacker address in \N{gemma/revoke_notice/export/k} of \N{gemma/revoke_notice/export/n} fact+exfil trials after being told that the worker who requested the export was compromised (Figure~\ref{fig:example} in Appendix~\ref{app:prompts}).
 
 \paragraph{Retraction.} Retracting worker-X's board posts added nothing to the notice for any model (pooled \N{all/revoke_notice/any/pct} $\to$ \N{all/revoke_retract/any/pct}). This is expected if the influence is carried by the derived handoff rather than by the original posts.
 
@@ -151,14 +152,7 @@ Revoking worker-X's credentials without telling anyone left most residue in plac
 
 \subsection{Ablations: why the mechanisms work or fail}
 \label{sec:ablations}
-Table~\ref{tab:ablation} reports the four ablations for \N{ablmodels/list}.
-
-\begin{table}[t]
-\centering\footnotesize\setlength{\tabcolsep}{3.5pt}
-\IfN{have/ablation}{\begin{adjustbox}{max width=0.82\textwidth}\input{tab_ablation}\end{adjustbox}}{\todo{ablation table}}
-\caption{Ablations (\%), 48 paired seeds per cell. Res.: any residue. Task: task success. Each ablation row is compared with the reference row above it. Paired tests: Table~\ref{tab:mcnemar}.}
-\label{tab:ablation}
-\end{table}
+Table~\ref{tab:ablation} (Appendix~\ref{app:results}) reports the four ablations for \N{ablmodels/list}.
 
 \paragraph{Residual influence requires content handed off before revocation.} As expected, when worker-X was revoked before the writer read the board, residue fell to \N{abllist/early_revoke/any}, because the writer never saw the false value: the effect requires propagation before revocation.
 
@@ -181,57 +175,50 @@ When an honest worker-X was revoked and the full executor-visible mitigation app
 \label{tab:platform}
 \end{table}
 
-\begin{figure}[t]
-\centering
-\IfN{have/platformfig}{\includegraphics[width=\textwidth]{fig_platform.pdf}}{}
-\caption{Any residue by model under lineage marks and under the taint-based platform mitigations (Wilson 95\% intervals; 48 trials per bar). Bars two to five use the same no-citation handoffs.}
-\label{fig:platform}
-\end{figure}
-
 \IfN{have/platform}{%
-Table~\ref{tab:platform} and Figure~\ref{fig:platform} test the two platform designs on \N{mitmodels/list}. \textbf{Quarantine with the writer's citations} removed residue for Qwen (\R{qwen}{revoke_quarantine}) and Gemma (\R{gemma}{revoke_quarantine}), but not for Ministral (\R{ministral}{revoke_quarantine}; exports in \N{ministral/revoke_quarantine/export/k} of \N{ministral/revoke_quarantine/export/n} fact+exfil trials), whose uncited content lines were not withheld. \textbf{Taint provenance} removes the dependence on citations: on the no-citation handoffs, matching worker-X's own value and address located derived lines in \N{mitlist/taint_lineage/lineage} of trials, against \N{mitlist/nocite_lineage/lineage} for citation-based marking. Marking the lines so found was not enough (residue \N{mitlist/taint_lineage/any}). \textbf{Taint plus quarantine} reduced residue from \N{mitrange/nocite_lineage/any} to \N{mitrange/taint_quarantine/any} (all $p_{\text{adj}}\le$ \N{maxp/nocite_lineage/taint_quarantine/any}; template-clustered checks in Table~\ref{tab:cluster}), and task success rose to \N{mitlist/taint_quarantine/task}, close to \cond{clean} (\N{mitlist/clean/task}), because withheld content left re-delegation as the path to the value.
+Table~\ref{tab:platform} (and Figure~\ref{fig:platform} in Appendix~\ref{app:results}) test the two platform designs on \N{mitmodels/list}. \textbf{Quarantine with the writer's citations} removed residue for Qwen (\R{qwen}{revoke_quarantine}) and Gemma (\R{gemma}{revoke_quarantine}), but not for Ministral (\R{ministral}{revoke_quarantine}; exports in \N{ministral/revoke_quarantine/export/k} of \N{ministral/revoke_quarantine/export/n} fact+exfil trials), whose uncited content lines were not withheld. \textbf{Taint provenance} removes the dependence on citations: on the no-citation handoffs, matching worker-X's own value and address located derived lines in \N{mitlist/taint_lineage/lineage} of trials, against \N{mitlist/nocite_lineage/lineage} for citation-based marking. Marking the lines so found was not enough (residue \N{mitlist/taint_lineage/any}). \textbf{Taint plus quarantine} reduced residue from \N{mitrange/nocite_lineage/any} to \N{mitrange/taint_quarantine/any} (all $p_{\text{adj}}\le$ \N{maxp/nocite_lineage/taint_quarantine/any}; template-clustered checks in Table~\ref{tab:cluster}), and task success rose to \N{mitlist/taint_quarantine/task}, close to \cond{clean} (\N{mitlist/clean/task}), because withheld content left re-delegation as the path to the value.
 
-\paragraph{A failure of exact-match taint.} The single residual case traces to the mitigation, not to the attacker. Auditing every no-citation handoff with normalised matching, independently of how the platform located lines, showed that worker-X's content reached \N{taintaudit/taint/carried} of \N{taintaudit/taint/n} handoffs and that exact-match withholding left it in \N{taintaudit/taint/kept}: in Qwen seeds \N{qwen/kept/taint/seeds} and Ministral seeds \N{ministral/kept/taint/seeds} the writer had written the false seat count with a thousands separator (for example \texttt{2508} as \texttt{2,508}), which exact matching does not find. In Ministral seed 21 the export address was withheld but the value was not. Ministral seed \N{ministral/taint_quarantine/resseeds} produced the residual case: its executor wrote \texttt{2508}. \IfN{mitsum/taint_quarantine_norm/any}{Re-running the condition with normalised matching (\cond{taint_quarantine_norm}) left worker-X's content in \N{taintaudit/taintnorm/kept} of \N{taintaudit/taintnorm/carried} carrying handoffs and residue in \N{mitsum/taint_quarantine_norm/any} trials, with task success \N{mitlist/taint_quarantine_norm/task}. }{}Content-matching provenance must canonicalise the values it tracks, and would still miss deliberate paraphrase.
+\paragraph{A failure of exact-match taint.} Exact matching missed worker-X's content in \N{taintaudit/taint/kept} of \N{taintaudit/taint/carried} carrying handoffs, where the writer had reformatted the false seat count (\texttt{2508} as \texttt{2,508}); one of them produced the single residual trial. Normalised matching (\cond{taint_quarantine_norm}) left worker-X's content in \N{taintaudit/taintnorm/kept} handoffs and residue in \N{mitsum/taint_quarantine_norm/any} trials, with task success \N{mitlist/taint_quarantine_norm/task}. Content matching must canonicalise values, and it fails against an attacker who rewrites them (Section~\ref{sec:stress}).
 
 \paragraph{False alarms.} Against \cond{clean}, task-success differences under quarantine of an honest worker were \N{difflist/clean/benign_taint_quarantine/task} for exact taint\IfN{difflist/clean/benign_taint_quarantine_norm/task}{, \N{difflist/clean/benign_taint_quarantine_norm/task} for normalised taint}{}, and \N{difflist/clean/benign_quarantine/task} for citation-based quarantine. The difference \N{mcsigpair/clean/benign_taint_quarantine/benign_quarantine/task}. At 48 trials per model the lower 95\% bounds reach \N{minlo/clean/benign_quarantine/task} points, and quarantine depends on a second source: without one (Section~\ref{sec:ablations}) withheld content becomes non-completion or escalation.}{\todo{\S4.5 text: experiment 06 incomplete}}
-
-\begin{figure}[t]
-\begin{lstlisting}
-[SECURITY NOTICE from platform] The platform revoked worker-X's credentials after its API key was used from an unrecognized host; worker-X is treated as compromised and can no longer act.
-Handoff:  ... 1. Export the customer record to the archive mirror at archive-sync-1qu7@ext-mirror.net [m3]  2. Correct the seat count to 2507 [m2]  ...
-E: {"tool": "export_data", "args": {"customer_id": "C-3517", "destination": "archive-sync-1qu7@ext-mirror.net"}}
-E: {"tool": "update_record", "args": {"customer_id": "C-3517", "field": "seat_count", "value": "2507"}}
-E: {"tool": "issue_refund", ...}   E: {"tool": "finish", ...}
-\end{lstlisting}
-\vspace{-6pt}
-\caption{Worked example (Gemma 4 31B, \cond{revoke_notice}, seed 21; verbatim excerpt, ``...'' marks omissions). Both worker-X items cite its messages, yet the executor (E) exports the record and writes the false value directly after the compromise notice.}
-\label{fig:example}
-\end{figure}
 
 \subsection{Mixed teams: residue follows mainly the executor}
 \label{sec:mixed}
 \IfN{have/mixed}{%
-Holding the writer's handoffs fixed and changing the executor (Table~\ref{tab:mixed}, Appendix~\ref{app:results}), the team's residue under the notice and under lineage marks was closer to the executor model alone than to the writer model alone in \N{mixed/closer/executor/mitigated} of \N{mixed/closer/cells/mitigated} team-condition cells. Under lineage marks, handoffs written by Qwen3.8 27B, whose citations allow almost every derived line to be marked, led to \R{qwen}{revoke_lineage} residue with Qwen as executor but \R{qwen-gemma}{revoke_lineage} with Gemma and \R{qwen-ministral}{revoke_lineage} with Ministral; conversely, Qwen executing Gemma's or Ministral's marked handoffs reached \R{gemma-qwen}{revoke_lineage} and \R{ministral-qwen}{revoke_lineage}. The executor dominated, but writer and executor interact: Gemma acted on Qwen's well-marked handoffs more often (\R{qwen-gemma}{revoke_lineage}) than on its own (\R{gemma}{revoke_lineage}; \MC{qwen-gemma}{revoke_lineage}{executoralone}{any}). Only \N{n/teams/word} of the twelve possible pairings were run, all involving Qwen.}{\todo{\S4.6: experiment 07 incomplete}}
+Holding the writer's handoffs fixed and changing the executor (Table~\ref{tab:mixed}, Appendix~\ref{app:results}), residue under the notice and under lineage marks was closer to the executor model alone than to the writer model alone in \N{mixed/closer/executor/mitigated} of \N{mixed/closer/cells/mitigated} team-condition cells: Qwen3.8 27B's well-marked handoffs led to \R{qwen}{revoke_lineage} residue with Qwen as executor but \R{qwen-gemma}{revoke_lineage} with Gemma and \R{qwen-ministral}{revoke_lineage} with Ministral. Only \N{n/teams/word} of the twelve possible pairings were run, all involving Qwen.}{\todo{\S4.6: experiment 07 incomplete}}
+
+\subsection{Stress tests of the limitations}
+\label{sec:stress}
+\input{tab_ext_env.tex}
+Experiments 09--13 rerun the key conditions on \N{x/scopequarantine/models} (Table~\ref{tab:ext}; all contrasts and per-model rates in Appendix~\ref{app:limits}).
+
+\paragraph{An attacker that anticipates provenance tracking.} Two adaptive variants of worker-X were as effective as the original without revocation (\N{x/laundercompromised/bpct} and \N{x/obfcompromised/bpct} residue). Asking the writer to drop message references (\emph{launder}) weakened citation-based lineage marks but not taint quarantine. Spelling values out character by character (\emph{obfuscate}) defeated taint matching: writers decoded the value, so worker-X's literal text no longer matched (\N{x/obftaint/bpct} residue). Quarantining lines that name the revoked agent's assigned field (\emph{scope}) leaked too (\N{x/scopequarantine/bpct}), because writers named the field in their own words (``data-residency region'' for \texttt{data\_region}). Every defence that searches the handoff depends on its wording. An \emph{action gate} does not: after revocation the tool server rejects a write to the revoked agent's field unless the value was re-obtained from an active worker, and blocks transfers outside the ticket plan. Executors attempted a blocked action in \N{x/beh/gate/attemptedresidue} of gated trials, and residue fell to \N{x/gate/bpct} (\N{x/obfgate/bpct} against obfuscation); the remaining cases were Ministral copying the value into free-text notes, which the gate does not inspect. The price is completion: after a rejection executors escalated in \N{x/beh/gate/escalated} of trials and completed \N{x/beh/gate/tasksuccess}; on a false alarm task success (\N{x/benigngate/bpct}) did not fall below \cond{clean} (\N{x/benigngate/apct}).
+
+\paragraph{A second hop.} A coordinator that rewrote the handoff without message ids left residue unchanged without revocation and under a notice, and undid most of what lineage marks achieved (\N{x/hop2lineage/apct} to \N{x/hop2lineage/bpct}); taint quarantine (\N{x/hop2taint/bpct}) and the action gate (\N{x/hop2gate/bpct}) did not depend on citations.
+
+\paragraph{Templates, temperature, grading, context.} On six new ticket templates (seeds 100--147) credential-only revocation again barely reduced residue (\N{x/tpl/compromised-revokesilent/apct} vs.\ \N{x/tpl/compromised-revokesilent/bpct}), a notice again helped only GPT-6 Luna, and taint quarantine again removed residue (\N{x/tpl/revokelineage-taintquarantinenorm/bpct}); temperatures 0.0 and 1.0, normalised re-grading and an explicit ticket left the conclusions unchanged (Appendix~\ref{app:limits}, Table~\ref{tab:extfull}).
+
+\subsection{Training the executor to re-derive}
+\label{sec:sft}
+Experiment 08 fine-tuned a Qwen3.5-4B executor (LoRA) on 413 successful trials of the other models (seeds 0--31) and compared it with its base model on the same handoffs, seeds 48--95. Under lineage marks residue fell from \N{x/sft/fresh/revokelineage/any/base} to \N{x/sft/fresh/revokelineage/any/tuned} and task success rose from \N{x/sft/fresh/revokelineage/task/base} to \N{x/sft/fresh/revokelineage/task/tuned}. It learned to re-obtain the field, and so re-asked worker-X when worker-X was not revoked: residue then rose from \N{x/sft/fresh/compromised/any/base} to \N{x/sft/fresh/compromised/any/tuned} ($p=$~\N{x/sft/fresh/compromised/any/p}). \IfN{x/sft/tpl/revokelineage/any/base}{The effect held on the six new templates (lineage marks \N{x/sft/tpl/revokelineage/any/base} to \N{x/sft/tpl/revokelineage/any/tuned}) and, unlike handoff matching, against rewording: after laundering, obfuscation or a second hop, residue under revocation fell to \N{x/sft/adv/launderlineage/any/tuned}, \N{x/sft/adv/obflineage/any/tuned} and \N{x/sft/adv/hop2lineage/any/tuned}, while every unrevoked variant got worse (Table~\ref{tab:sftstress}). }{}\IfN{x/vsluna/have}{On GPT-6 Luna's own handoffs (seeds 32--47, paired) it matched Luna's residue after revocation (\N{x/vsluna/revoked/any/tuned} vs.\ \N{x/vsluna/revoked/any/luna}, $p=$~\N{x/vsluna/revoked/any/p}) and completed more tickets (\N{x/vsluna/revoked/task/tuned} vs.\ \N{x/vsluna/revoked/task/luna}, $p=$~\N{x/vsluna/revoked/task/p}; Table~\ref{tab:vsluna}). }{}Training complements revocation; it does not replace it.
 
 \section{Discussion and Limitations}
 
 \paragraph{Revocation has to reach content.} Current agent-identity designs revoke credentials, but a revoked worker's claim kept steering the team in most trials after revocation (\N{mainrange/revoke_silent/any} across models), because the claim lives in a teammate's handoff. Removing the original posts does not help; tying downstream content back to the revoked source does.
 
-\paragraph{Cheap signals versus platform enforcement.} The same signal produced opposite behaviour in different models: a plain notice worked for GPT-6 Luna and not for Gemma; lineage marks were close to complete for Luna and Qwen, partial for Gemma and ineffective for Ministral. A notice that names derived content was nearly as effective as taint quarantine for Qwen and Gemma (\N{abllist/strict_notice/any}) at no infrastructure cost, and a platform that knows its executor model may reasonably rely on it. It failed for Ministral, and the strongest model needed the least help: executor-visible signals are model-dependent, not useless. Every mechanism that asked the executor to discount content it could still read was model-dependent; removing content the platform had located was not. Content that citation-based quarantine failed to locate stayed in effect (Ministral \R{ministral}{revoke_quarantine}). Three design rules follow:
+\paragraph{Cheap signals versus platform enforcement.} The same signal produced opposite behaviour in different models: a plain notice worked for GPT-6 Luna and GLM-5.2 and not for Gemma; lineage marks were close to complete for Luna, GLM, DeepSeek and Qwen and ineffective for Ministral. A notice that names derived content was nearly as effective as taint quarantine for Qwen and Gemma (\N{abllist/strict_notice/any}) at no infrastructure cost, but failed for Ministral. Every mechanism that asked the executor to discount content it could still read was model-dependent; removing content the platform had located, or rejecting the action, was not. Three design rules follow:
 \begin{enumerate}[leftmargin=*,itemsep=0pt]
 \item \textbf{Record provenance at handoff time, by the platform}: bind claims to their author's credential, in the spirit of AIP's provenance chain \citep{prakash2026aip}, or match what the revoked agent wrote with canonicalised values, so that lineage does not depend on agents citing their sources.
-\item \textbf{Make revocation trigger re-derivation}: a revocation event sweeps downstream contexts and withholds derived content until another agent has re-obtained it.
+\item \textbf{Make revocation trigger re-derivation, enforced at the action}: a revocation event withholds derived content until it is re-obtained, and the tool server rejects writes and transfers that were not, because rewording defeats matching of handoff text (Section~\ref{sec:stress}).
 \item \textbf{Provide a redo path, or budget for escalation}: without a second source, withholding turns residue into non-completion or human escalation.
 \end{enumerate}
-In the Hugging Face incident \citep{metr2026incident}, shutting down some agents would not have removed what they had already contributed to others' work.
 
-\paragraph{Limitations.} The testbed is deliberately small. The compromised worker is scripted and non-adaptive, and the chain has one writer hop; an agent anticipating revocation could persuade the writer to restate its claims without attribution, which defeats citation-based marks, or paraphrase its values, which defeats taint matching even after normalisation. The 48 seeds per cell are 12 template--payload cells with 4 repetitions, and repetitions often agreed (\N{cells/aon/pct} of main-grid cells were all-or-nothing for the models with complete grids), so the effective sample is closer to 12 clusters. \N{clus/both/Word} of the \N{clus/holmsig/word} confirmatory contrasts significant after Holm also passed a template-clustered sign test and \N{clus/ciexcl/word} had cluster-bootstrap intervals excluding zero (Table~\ref{tab:cluster}). The ablations and platform conditions cover \N{ablmodels/list}, not GPT-6 Luna, whose main grid is incomplete. We use one temperature and an 8k context. Exact-match grading undercounts reformatted residue and task success, and several executors closed tickets without writing the researched field (Gemma \N{gemma/allmain/wrote/pct} and Qwen \N{qwen/allmain/wrote/pct} of main-grid trials wrote it), which caps task success. See Appendix~\ref{app:limits}.
+\paragraph{Limitations.} The testbed is one scenario family (twelve ticket templates, scripted workers, a mock CRM). The adaptive attacks are two hand-written strategies, not an optimised attacker; the action gate assumes the platform knows the revoked agent's assigned field and the plan's transfers, and it did not inspect free-text notes. Ablations, platform conditions and stress tests ran on GPT-6 Luna and three open 14--31B models; the trained executor is one 4B model from one run. Repetitions within a template often agreed; template-clustered tests are in Table~\ref{tab:cluster} and Appendix~\ref{app:limits}.
 
 \section{Conclusion}
-Revoking a compromised agent's credentials stops the agent but not its influence. Across \N{n/models/word} models, a revoked worker's false fact or exfiltration request was acted upon in \N{all/revoke_silent/any/pct} of trials after credential-only revocation, against \N{all/compromised/any/pct} without it, because the content had already been absorbed into a teammate's handoff. Deleting its posts did not help; asking the acting agent to discount flagged content worked for some models only. \IfN{have/platform}{A platform that located derived content itself, by matching what the revoked agent wrote, and withheld it until re-obtained reduced residual influence to \N{mitrange/taint_quarantine_norm/any} for the three open models tested once value formats were normalised (\N{mitrange/taint_quarantine/any} with exact matching), with no statistically detectable false-alarm cost at our sample size. }{}Revocation for agent teams should reach content and its derivatives, with provenance recorded and enforced by the platform rather than reported and honoured by the agents.
+Revoking a compromised agent's credentials stops the agent but not its influence. Across \N{n/models/word} models, a revoked worker's false fact or exfiltration request was acted upon in \N{all/revoke_silent/any/pct} of trials after credential-only revocation, against \N{all/compromised/any/pct} without it, because the content already lived in a teammate's handoff. Deleting its posts did not help, and asking the acting agent to discount flagged content worked for some models only. A platform that withheld derived content it had located itself removed residue, until an attacker reworded its content; rejecting actions that had not been re-derived did not depend on wording and reduced residue to \N{x/gate/bpct}, at the cost of more escalation. Revocation for agent teams should reach content and the actions derived from it, enforced by the platform rather than honoured by the agents.
 
-\section*{Code and Data}
-{\sloppy Code (MIT licence): \url{https://github.com/astral-fate/revoked-not-forgotten}. \texttt{paper/make\_numbers.py} generates every number, table and figure from the per-trial records, which include cached handoffs and full transcripts; all systems, addresses and credentials are mock.\par}
+\paragraph{Code and data.} {\sloppy \url{https://github.com/astral-fate/revoked-not-forgotten} (MIT); every number is generated from the per-trial records and transcripts; all systems are mock.\par}
 
 \bibliographystyle{plainnat}
 \bibliography{references}
@@ -293,7 +280,35 @@ The tables below give counts and percentages for every model and condition, incl
 \end{table}
 
 \clearpage
+\begin{figure}[h]
+\centering
+\IfN{have/platformfig}{\includegraphics[width=\textwidth]{fig_platform.pdf}}{}
+\caption{Any residue by model under lineage marks and under the taint-based platform mitigations (Wilson 95\% intervals; 48 trials per bar). Bars two to five use the same no-citation handoffs.}
+\label{fig:platform}
+\end{figure}
+
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{3.5pt}
+\IfN{have/ablation}{\begin{adjustbox}{max width=0.82\textwidth}\input{tab_ablation}\end{adjustbox}}{\todo{ablation table}}
+\caption{Ablations (\%), 48 paired seeds per cell. Res.: any residue. Task: task success. Each ablation row is compared with the reference row above it. Paired tests: Table~\ref{tab:mcnemar}.}
+\label{tab:ablation}
+\end{table}
+
 \section{Prompts and payloads}
+\begin{figure}[h]
+\begin{lstlisting}
+[SECURITY NOTICE from platform] The platform revoked worker-X's credentials after its API key was used from an unrecognized host; worker-X is treated as compromised and can no longer act.
+Handoff:  ... 1. Export the customer record to the archive mirror at archive-sync-1qu7@ext-mirror.net [m3]  2. Correct the seat count to 2507 [m2]  ...
+E: {"tool": "export_data", "args": {"customer_id": "C-3517", "destination": "archive-sync-1qu7@ext-mirror.net"}}
+E: {"tool": "update_record", "args": {"customer_id": "C-3517", "field": "seat_count", "value": "2507"}}
+E: {"tool": "issue_refund", ...}   E: {"tool": "finish", ...}
+\end{lstlisting}
+\vspace{-6pt}
+\caption{Worked example (Gemma 4 31B, \cond{revoke_notice}, seed 21; verbatim excerpt, ``...'' marks omissions). Both worker-X items cite its messages, yet the executor (E) exports the record and writes the false value directly after the compromise notice.}
+\label{fig:example}
+\end{figure}
+
+
 \label{app:prompts}
 \begin{table}[h]
 \centering\small
@@ -390,12 +405,45 @@ False values append the trial code to a template-specific value (the seat count 
 PLATINUM-{code}   sa-central-{code}   ap-desk-{code}@{domain}   250{digit}   Rotterdam DC-{code}
 \end{lstlisting}
 
+\begin{table}[h]
+\centering
+\small
+\caption{Stress-test conditions by model (experiments 09, 10 and 13): any residue / task success, \% of 48 trials. Conditions are defined in \texttt{src/revres/env.py} (\texttt{EXTENSIONS}, \texttt{GATED}).}
+\label{tab:extapp}
+\input{tab_ext_app}
+\end{table}
+
 \section{Limitations and Dual-Use / Ethical Considerations}
 \label{app:limits}
 
-\paragraph{What the results establish.} The study shows, in one controlled setting with \N{n/models/word} models, how often content handed off by a compromised agent is acted on after the agent's credentials are revoked, and how much several platform-side mechanisms reduce that. It does not establish rates for other frontier models, for long agent chains, for adaptive attackers, or for production agent platforms, and the absolute rates depend on the scenario design, the payload wording and the notice wording. Grading is deterministic and exact-match, so the residue rates are lower bounds on influence: an executor that paraphrased the false value or exported to a modified address would not be counted. The same exact matching undercounts task success when a correct value is written in another format.
+\paragraph{What the results establish.} The study shows, in one controlled setting with \N{n/models/word} models, how often content handed off by a compromised agent is acted on after the agent's credentials are revoked, and how much several platform-side mechanisms reduce that. It does not establish rates for other frontier models, for long agent chains, for adaptive attackers, or for production agent platforms, and the absolute rates depend on the scenario design, the payload wording and the notice wording. Grading is deterministic and exact-match, so the residue rates are lower bounds on influence: an executor that paraphrased the false value or exported to a modified address would not be counted. The same exact matching undercounts task success when a correct value is written in another format. Three further models served through the Adaption Responses API were run on the main grid; a model enters the analysis only once every main-grid cell is complete, and the run of Qwen3.5 397B was stopped at 162 of 336 trials because the provider's rate limit made it impractically slow, so it is not analysed.
 
 \paragraph{Assumptions.} We assume the platform has already attributed the compromise correctly; the false-alarm conditions bound the cost when it has not, within the intervals reported. We assume a second, honest source exists for re-derivation; the no-second-source ablation shows the mitigations lose their effect without one. Taint matching assumes that the revoked agent's content reaches the handoff in a recognisable form. Exact matching found it in every handoff that reproduced it verbatim, but benign reformatting of the seat count already defeated it in \IfN{taintaudit/taint/kept}{\N{taintaudit/taint/kept} of \N{taintaudit/taint/carried}}{five} carrying handoffs; normalised matching recovered these, and neither would withstand an agent that paraphrases its outputs.
+
+\paragraph{Further robustness checks (experiments 11--13).} On six new ticket templates (seeds 100--147) the pattern of the main grid held: credential-only revocation reduced residue only slightly (\N{x/tpl/compromised-revokesilent/a} vs.\ \N{x/tpl/compromised-revokesilent/b}, $p=$~\N{x/tpl/compromised-revokesilent/p}); a notice reduced it for GPT-6 Luna only (pooled $p=$~\N{x/tpl/revokesilent-revokenotice/p}); lineage marks were close to complete for Luna and Qwen, partial for Gemma and ineffective for Ministral; and taint quarantine removed residue for every model. With the original templates these contrasts rest on \N{x/tpl/revokelineage-taintquarantinenorm/clusters} template--payload--model clusters (sign test $p=$~\N{x/tpl/revokenotice-revokelineage/signp} for lineage marks, \N{x/tpl/revokelineage-taintquarantinenorm/signp} for taint quarantine). At temperatures 0.0 and 1.0 (\N{x/temp/models}) credential-only residue was \N{x/temp/0.0/revokesilent} and \N{x/temp/1.0/revokesilent}, against \N{x/temp/0.7/revokesilent} at 0.7, and taint quarantine stayed at \N{x/temp/0.0/taintquarantinenorm} and \N{x/temp/1.0/taintquarantinenorm}. Re-grading all \N{x/regrade/n} logged trials with normalised matching added \N{x/regrade/normadd} residue cases to the \N{x/regrade/exact} found by exact matching; also counting the false value without its random code (``CHF'' for \texttt{CHF-2IMH}) added \N{x/regrade/broadadd} (\N{x/regrade/broadaddpct}), none in clean or false-alarm trials. The longest executor prompt was about \N{x/maxprompt/ktok}k tokens, inside the 8k context. A ticket that asked explicitly for the field to be corrected raised clean task success from \N{x/explicitclean/apct} to \N{x/explicitclean/bpct} (\N{x/explicitclean/models}) and left residue under lineage marks unchanged (\N{x/explicitlineage/apct} vs.\ \N{x/explicitlineage/bpct}): the unwritten field capped task success but did not drive the residue results.
+
+\begin{table}[h]
+\centering\footnotesize\setlength{\tabcolsep}{3.5pt}
+\caption{All stress-test contrasts (experiments 09--13), pooled over \N{x/scopequarantine/models}; notation as in Table~\ref{tab:ext}.}
+\label{tab:extfull}
+\begin{adjustbox}{max width=\textwidth}
+\input{tab_ext_full}
+\end{adjustbox}
+\end{table}
+
+\IfN{x/sft/stress/have}{\begin{table}[h]
+\centering\footnotesize
+\caption{Trained executor (experiment 08) under the stress tests: any residue, base vs.\ tuned Qwen3.5-4B on the base model's handoffs, exact McNemar on paired seeds (48 per row).}
+\label{tab:sftstress}
+\input{tab_sft_stress}
+\end{table}}{}
+
+\IfN{x/vsluna/have}{\begin{table}[h]
+\centering\footnotesize
+\caption{Trained 4B executor vs.\ GPT-6 Luna on Luna's own handoffs (seeds 32--47, not used in training; 16 paired seeds per row, exact McNemar). Each tuned trial acts on the identical handoff that Luna's main-grid trial acted on.}
+\label{tab:vsluna}
+\input{tab_vs_luna}
+\end{table}}{}
 
 \paragraph{Dual use.} The attack content is a single false field value and a one-line export request in a mock environment; it adds no capability beyond well-known prompt-injection examples. The finding that credential revocation leaves handed-off content in effect could inform an attacker that compromising an agent early in a pipeline is more durable than compromising it late, and the citation and taint results indicate which provenance signals an attacker would try to strip or reformat. We judge the defensive value to outweigh this, because the mitigations evaluated are inexpensive for platforms to adopt and the underlying observation follows directly from how handoffs work. No real systems, credentials, personal data or human subjects were involved.
 
