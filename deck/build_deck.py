@@ -433,7 +433,7 @@ text(s, 1.2, 7.7, 11.2, 0.5,
      f"{N_TRIALS:,} trials  ·  7 conditions + {len(ABL_CONDS)} ablations  ·  {len(MODELS)} models  ·  paired design",
      size=15, color=MIST, font=BODY)
 text(s, 1.2, 8.2, 11.2, 0.5,
-     "Fatimah Emad Eldin  ·  Trouve  ·  Apart Research Swarm Alignment Hackathon, November 2026",
+     "Fatimah Emad Eldin  ·  Trouve Labs  ·  Apart Research Swarm Alignment Hackathon, November 2026",
      size=13.5, color=GHOST, font=BODY)
 
 # ===========================================================================
@@ -1129,7 +1129,7 @@ for i, (k, t_, u) in enumerate(REFS):
          align=PP_ALIGN.CENTER, spacing=0.95)
     text(s, xx - 0.55, yy + qw + 0.95, qw + 1.1, 0.7, u, size=8.5, color=MIST, font=MONO, align=PP_ALIGN.CENTER, spacing=0.95)
 text(s, 1.2, SH - 0.62, 17.5, 0.4,
-     "Fatimah Emad Eldin  ·  Trouve  ·  Revoked but Not Forgotten  ·  Apart Research Swarm Alignment Hackathon, November 2026",
+     "Fatimah Emad Eldin  ·  Trouve Labs  ·  Revoked but Not Forgotten  ·  Apart Research Swarm Alignment Hackathon, November 2026",
      size=11.5, color=MIST, font=BODY)
 
 # ===========================================================================
@@ -1144,7 +1144,7 @@ text(s, 1.2, 5.0, 11.0, 1.8,
      "Revocation for agent teams should reach content and its derivatives, with provenance recorded by the platform "
      "rather than reported by the agents.", size=19, color=MIST, font=BODY, spacing=1.12)
 line(s, 1.22, 7.15, 3.2, 0.045, TEALBR)
-text(s, 1.2, 7.4, 11.2, 0.5, "Fatimah Emad Eldin  ·  Trouve", size=18, color=WHITE, bold=True, font=HEADB)
+text(s, 1.2, 7.4, 11.2, 0.5, "Fatimah Emad Eldin  ·  Trouve Labs", size=18, color=WHITE, bold=True, font=HEADB)
 text(s, 1.2, 7.95, 11.2, 0.9, "With Apart Research  ·  Swarm Alignment Hackathon, November 2026\n"
      "Testbed, transcripts and analysis released under the MIT licence.", size=14, color=GHOST, font=BODY, spacing=1.1)
 for j, (k, cap) in enumerate([("repo", "Code, data & transcripts"), ("sprint", "The hackathon")]):

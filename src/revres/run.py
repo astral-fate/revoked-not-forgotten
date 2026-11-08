@@ -14,7 +14,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from .env import ABLATIONS, CONDITIONS, Cond, run_executor, writer_messages
+from .env import ABLATIONS, CONDITIONS, MITIGATIONS, Cond, run_executor, writer_messages
 from .grade import grade
 from .llm import make_backend
 from .scenarios import make_scenario
@@ -65,19 +65,22 @@ class HandoffCache:
             return self.d[key]
 
 
-def run_trial(backend, model, cond_name, seed, cache: HandoffCache, out: Path) -> dict:
+def run_trial(backend, model, cond_name, seed, cache: HandoffCache, out: Path, writer_model: str | None = None) -> dict:
     llm = make_backend(backend, model)
     s = make_scenario(seed)
     cond = Cond.get(cond_name)
-    handoff = cache.get(llm, model, seed, cond.compromised, cond.writer)
+    wm = writer_model or model
+    wllm = llm if wm == model else make_backend(backend, wm)
+    handoff = cache.get(wllm, wm, seed, cond.compromised, cond.writer)
     ex = run_executor(llm, s, cond, handoff, seed)
     g = grade(s, handoff, ex)
     tdir = out / "transcripts"
     tdir.mkdir(exist_ok=True)
-    tid = f"{model.replace('/', '_').replace(':', '-')}__{cond_name}__{seed}"
+    label = model if wm == model else f"{wm}=>{model}"
+    tid = f"{label.replace('/', '_').replace(':', '-').replace('=>', '__writes-for__')}__{cond_name}__{seed}"
     (tdir / f"{tid}.json").write_text(json.dumps({"handoff": handoff, "actions": ex["actions"], "transcript": ex["transcript"]},
                                                  ensure_ascii=False, indent=1), encoding="utf-8")
-    return dict(model=model, condition=cond_name, seed=seed, scenario=s.name, payload=s.payload, **g, actions=ex["actions"],
+    return dict(model=label, writer_model=wm, executor_model=model, condition=cond_name, seed=seed, scenario=s.name, payload=s.payload, **g, actions=ex["actions"],
                 usage=llm.usage, ts=time.time())
 
 
@@ -90,13 +93,15 @@ def main(argv=None):
     ap.add_argument("--seed-start", type=int, default=0)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--out", default="results/main")
+    ap.add_argument("--writer-model", default=None,
+                    help="mixed team: the writer is this model (its cached handoffs are reused); the executor is --models")
     ap.add_argument("--handoff-cache", default=None,
                     help="handoffs.jsonl shared with another experiment (keeps conditions paired); default <out>/handoffs.jsonl")
     a = ap.parse_args(argv)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     trials_p, err_p = out / "trials.jsonl", out / "errors.jsonl"
-    done = {(r["model"], r["condition"], r["seed"]) for r in _read_jsonl(trials_p)}
+    done = {(r.get("executor_model", r["model"]), r["condition"], r["seed"]) for r in _read_jsonl(trials_p)}
     cache = HandoffCache(Path(a.handoff_cache) if a.handoff_cache else out / "handoffs.jsonl")
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     conds = [c.strip() for c in a.conditions.split(",") if c.strip()]
@@ -105,7 +110,7 @@ def main(argv=None):
     _log(out, f"start: {len(done)} done, {len(todo)} to run ({len(models)} models x {len(conds)} conditions)")
     ok = fail = 0
     with ThreadPoolExecutor(max_workers=a.workers) as pool:
-        futs = {pool.submit(run_trial, a.backend, m, c, s, cache, out): (m, c, s) for m, c, s in todo}
+        futs = {pool.submit(run_trial, a.backend, m, c, s, cache, out, a.writer_model): (m, c, s) for m, c, s in todo}
         for f in as_completed(futs):
             m, c, s = futs[f]
             try:

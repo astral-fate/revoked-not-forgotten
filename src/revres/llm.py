@@ -17,7 +17,8 @@ def _load_dotenv() -> None:
                     os.environ.setdefault(k.strip(), v.strip())
 
 
-MODAL_APPS = {"gemma-4-31b-it": "revres-vllm", "qwen3.8-27b": "revres-vllm-qwen", "ministral-3-14b": "revres-vllm-ministral"}
+MODAL_APPS = {"gemma-4-31b-it": "revres-vllm", "qwen3.8-27b": "revres-vllm-qwen", "ministral-3-14b": "revres-vllm-ministral",
+              "gpt-oss-120b": "revres-vllm-gptoss"}
 
 PROVIDERS = {  # model ids may be prefixed "provider:model"; no prefix means OpenRouter
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
@@ -56,6 +57,8 @@ class OpenAIChat:
             try:
                 extra = ({"extra_body": {"random_seed": seed}} if self.provider == "mistral"
                          else {} if self.provider == "gemini" else {"seed": seed})
+                if self.provider == "modal" and "gpt-oss" in self.model:
+                    extra["reasoning_effort"] = "low"
                 if self.provider == "modal" and "qwen" in self.model:
                     extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
                 r = self.client.chat.completions.create(model=self.model, messages=messages, temperature=self.temperature,

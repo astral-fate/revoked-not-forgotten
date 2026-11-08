@@ -159,7 +159,7 @@ def write(g):
   <h3 style="margin-top:18px;max-width:900px;">Residual influence of revoked agents in LLM agent teams. Revoking a compromised
   agent's credentials stops the agent. Does it stop the false facts and instructions it already handed to its teammates?</h3>
   <div class="stats" style="max-width:1100px;width:100%;">{glance}</div>
-  <div class="signature"><span class="dot"></span><span><b style="color:#e9ecf3;">Fatimah Emad Eldin</b> &nbsp;·&nbsp; Trouve
+  <div class="signature"><span class="dot"></span><span><b style="color:#e9ecf3;">Fatimah Emad Eldin</b> &nbsp;·&nbsp; Trouve Labs
   &nbsp;·&nbsp; November 2026</span><span class="dot"></span></div>""", center=True)
 
     # 2 problem
@@ -451,7 +451,7 @@ def write(g):
   recorded by the platform rather than reported by the agents.</p>
   <div class="qr" style="margin-top:24px;"><img alt="QR repository" src="{b64(g['QR']['repo'])}" style="max-width:150px;">
   <div class="u">{E(g['REPO_URL'])}</div></div>
-  <div class="signature"><span class="dot"></span><span><b style="color:#e9ecf3;">Fatimah Emad Eldin</b> &nbsp;·&nbsp; Trouve
+  <div class="signature"><span class="dot"></span><span><b style="color:#e9ecf3;">Fatimah Emad Eldin</b> &nbsp;·&nbsp; Trouve Labs
   &nbsp;·&nbsp; Apart Research Swarm Alignment Hackathon, November 2026</span><span class="dot"></span></div>""", center=True)
 
     total = len(slides)

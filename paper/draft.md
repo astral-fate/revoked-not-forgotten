@@ -1,6 +1,6 @@
 # Revoked but Not Forgotten: Residual Influence of Revoked Agents in LLM Agent Teams
 
-Fatimah Emad Eldin, Trouve
+Fatimah Emad Eldin, Trouve Labs
 
 With Apart Research
 

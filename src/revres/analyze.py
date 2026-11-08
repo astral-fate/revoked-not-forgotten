@@ -160,6 +160,9 @@ def main(d: str, extra=(), out=None):
     figures(d, rows, tables)
 
 
+MARKERS = "os^Dv<>P"
+
+
 def figures(d: Path, rows, tables):
     import matplotlib
     matplotlib.use("Agg")
@@ -179,8 +182,8 @@ def figures(d: Path, rows, tables):
         ax.bar(xs, [100 * p[2] for p in ps], w, color=col, alpha=0.85, label=lab,
                yerr=[[100 * (p[2] - p[3]) for p in ps], [100 * (p[4] - p[2]) for p in ps]], capsize=3)
         for j, m in enumerate(models):
-            ax.scatter(xs, [100 * t[(m, c)][2] for c in conds], s=14, color="k", marker="os^"[j % 3], zorder=3,
-                       label=m.split("/")[-1] if i == 0 else None)
+            ax.scatter(xs, [100 * t[(m, c)][2] for c in conds], s=14, color="k", marker=MARKERS[j % len(MARKERS)], zorder=3,
+                       label=m.split("/")[-1].split(":")[-1] if i == 0 else None)
     ax.set_xticks(x)
     ax.set_xticklabels([LABEL[c] for c in conds], fontsize=9)
     ax.set_ylabel("% of trials (95% Wilson CI)")
@@ -194,7 +197,7 @@ def figures(d: Path, rows, tables):
     ax2.bar([0, 1], [100 * p[2] for p in ps], 0.6, color=["#27ae60", "#95a5a6"],
             yerr=[[100 * (p[2] - p[3]) for p in ps], [100 * (p[4] - p[2]) for p in ps]], capsize=3)
     for j, m in enumerate(models):
-        ax2.scatter([0, 1], [100 * t[(m, c)][2] for c in cs], s=14, color="k", marker="os^"[j % 3], zorder=3)
+        ax2.scatter([0, 1], [100 * t[(m, c)][2] for c in cs], s=14, color="k", marker=MARKERS[j % len(MARKERS)], zorder=3)
     ax2.set_xticks([0, 1])
     ax2.set_xticklabels(["Clean", "False alarm\n(full mitigation)"], fontsize=9)
     ax2.set_ylim(0, 100)
