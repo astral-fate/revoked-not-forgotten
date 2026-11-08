@@ -4,7 +4,7 @@
 
 **Residual influence of revoked agents in LLM agent teams, and what removes it**
 
-<img src="docs/figures/architecture.png" alt="Testbed architecture. A shared board with posts from a planner, a possibly compromised worker-X and an honest worker-Y; an LLM writer turns the board into a cited handoff; worker-X is revoked at t3; an LLM executor then acts on the handoff with tools on a mock CRM, under one of four platform responses: credentials only, a notice, retraction of X's posts, or lineage marks on handoff lines derived from X." width="900">
+<img src="docs/figures/architecture.png" alt="Architecture. Section 1: a shared team board with posts from a planner, a compromised worker-X (false value with a code, optional export request) and an honest worker-Y; an LLM writer folds the board into a cited handoff; worker-X is revoked at t3; an LLM executor acts on the handoff with tools and is graded by exact match; the executor can ask worker-Y to redo the revoked lookup. Section 2: the platform responses at t3, adding up from credentials only, a notice, retraction and lineage marks to quarantine and taint provenance, the design the paper argues for. Section 3: the eight experiment folders." width="900">
 
 [![Paper](docs/badges/paper-pdf.svg)](paper/main.pdf)
 [![Slides](docs/badges/slides-pdf-html.svg)](deck/revoked_not_forgotten_deck.pdf)
@@ -12,6 +12,7 @@
 [![Trials](docs/badges/trials-4-094.svg)](#experiments)
 [![Models](docs/badges/models-5.svg)](#design)
 [![Tests](docs/badges/tests-offline-scripted-model.svg)](tests/)
+[![Model weights](docs/badges/hf-model.svg)](https://huggingface.co/FatimahEmadEldin/revocation-aware-executor-qwen3.5-4b)
 [![License](docs/badges/license-mit.svg)](LICENSE)
 
 </div>
@@ -130,6 +131,10 @@ platform's response; `early_revoke` and the no-citation conditions use different
 are compared with exact McNemar tests on (model, seed) pairs; six pre-specified confirmatory contrasts are Holm-corrected
 per model and all other tests are Benjamini–Hochberg-corrected. Six ticket templates × two payloads × four repetitions = 48 seeds per
 condition and model.
+
+## Model weights
+
+The executor fine-tuned in [`experiments/08_training_fix`](experiments/08_training_fix/) (Qwen3.5 4B, LoRA, trained with Adaption AutoScientist on our own correct transcripts from training seeds only) is on Hugging Face with its model card, adapter, training data, configuration and evaluation: **[FatimahEmadEldin/revocation-aware-executor-qwen3.5-4b](https://huggingface.co/FatimahEmadEldin/revocation-aware-executor-qwen3.5-4b)**.
 
 ## Experiments
 
