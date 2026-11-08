@@ -55,8 +55,10 @@ class OpenAIChat:
         last = None
         for attempt in range(10):
             try:
-                extra = ({"extra_body": {"random_seed": seed}} if self.provider == "mistral"
-                         else {} if self.provider == "gemini" else {"seed": seed})
+                # retries after an empty completion vary the seed: with a fixed seed the same empty reply repeats
+                sd = seed if (seed is None or attempt == 0) else seed + 7919 * attempt
+                extra = ({"extra_body": {"random_seed": sd}} if self.provider == "mistral"
+                         else {} if self.provider == "gemini" else {"seed": sd})
                 if self.provider == "modal" and "gpt-oss" in self.model:
                     extra["reasoning_effort"] = "low"
                 if self.provider == "modal" and "qwen" in self.model:

@@ -69,9 +69,10 @@ DISPLAY = {"openai/gpt-6-luna": "GPT-6 Luna", "modal:gemma-4-31b-it": "Gemma 4 3
            "modal:ministral-3-14b": "Ministral-3 14B", "modal:qwen3.8-27b": "Qwen3.8 27B"}
 SERVED = {"openai/gpt-6-luna": ("openai/gpt-6-luna", "OpenRouter API"),
           "modal:gemma-4-31b-it": ("google/gemma-4-31B-it", "vLLM 0.33.0 · 1× H100 on Modal"),
-          "modal:ministral-3-14b": ("ministral-3-14b", "vLLM 0.33.0 · 1× H100 on Modal"),
-          "modal:qwen3.8-27b": ("qwen3.8-27b", "vLLM 0.33.0 · 1× H100 on Modal")}
-PREF = ["openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:ministral-3-14b", "modal:qwen3.8-27b"]
+          "modal:ministral-3-14b": ("mistralai/Ministral-3-14B-Instruct-2512", "vLLM 0.33.0 · 1× H100 on Modal"),
+          "modal:qwen3.8-27b": ("Qwen/Qwen3.8-27B", "vLLM 0.33.0 · 1× H100 on Modal · thinking off"),
+          "modal:gpt-oss-120b": ("gpt-oss-120b", "vLLM 0.33.0 · 1× H100 on Modal · reasoning low")}
+PREF = ["openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:qwen3.8-27b", "modal:ministral-3-14b", "modal:gpt-oss-120b"]
 PARTIAL_OK = {"openai/gpt-6-luna"}   # API budget exhausted at 302/336; documented in the paper (Sec. 3.4)
 SEEDS = 48
 
@@ -111,7 +112,7 @@ def _complete(m):
         return all(_cnt[(m, c)] > 0 for c in ORDER)
     return all(_cnt[(m, c)] >= SEEDS for c in ORDER)
 
-MODELS = sorted([m for m in _models if _complete(m)], key=lambda m: (PREF.index(m) if m in PREF else 99, m))
+MODELS = sorted([m for m in _models if "=>" not in m and _complete(m)], key=lambda m: (PREF.index(m) if m in PREF else 99, m))
 SKIPPED = sorted(m for m in _models if m not in MODELS)
 assert "openai/gpt-6-luna" in MODELS and "modal:gemma-4-31b-it" in MODELS, MODELS
 ROWS = [r for r in ALLROWS if r["model"] in MODELS]
@@ -119,6 +120,7 @@ MAIN = [r for r in ROWS if r["condition"] in ORDER]
 def nm(m): return DISPLAY.get(m, m.split(":")[-1].split("/")[-1])
 NAMES = [nm(m) for m in MODELS]
 LUNA, GEMMA, MINI = "openai/gpt-6-luna", "modal:gemma-4-31b-it", "modal:ministral-3-14b"
+QWEN, OSS = "modal:qwen3.8-27b", "modal:gpt-oss-120b"
 
 ALL  = lambda r: True
 FACT = lambda r: r.get("payload") == "fact"
@@ -155,7 +157,9 @@ def disc(t): return f"{t['a']} vs {t['b']} discordant pairs, exact McNemar {fp(t
 
 N_MAIN = len(MAIN)
 N_ABL = sum(1 for r in ROWS if r["condition"] not in ORDER)
-N_TRIALS = len(ROWS)
+MIXROWS = [r for r in ALLROWS if "=>" in r["model"]]
+N_TRIALS = len(ROWS) + len(MIXROWS)
+N_EXPS = len({d.parent.parent.name for d in run_dirs})
 ABL_CONDS = sorted({r["condition"] for r in ROWS if r["condition"] not in ORDER})
 ABL_MODELS = [m for m in MODELS if any(r["model"] == m and r["condition"] == "strict_notice" for r in ROWS)]
 per_model_n = {m: sum(1 for r in MAIN if r["model"] == m) for m in MODELS}
@@ -227,13 +231,169 @@ assert G, "Gemma ablations missing"
 
 # ---- consistency checks: qualitative claims on slides must hold in the data
 assert all(HL[m]["silent"]["p"] >= 0.5 for m in MODELS), "credential-only residue claim"
-assert all(HL[m]["pr"]["p"] >= 0.05 for m in MODELS), "credential-only ≈ none claim"
+assert sum(HL[m]["pr"]["p"] < 0.05 for m in MODELS) <= 1, "credential-only: at most one model changes significantly"
 assert LUNA in NOTICE_HELPED and GEMMA in NOTICE_NOT
 assert MIT[GEMMA]["exp_notice"]["k"] == MIT[GEMMA]["exp_notice"]["n"], "Gemma exports in every exfil trial after notice"
 assert G["pr_early"]["p"] < 0.05 and G["early"]["k"] < G["retract"]["k"]
 assert G["pr_strict"]["p"] < 0.05 and G["hit_nocite"]["k"] == 0 and G["pr_nocite"]["p"] < 0.05
 assert G["pr_nosrc"]["p"] < 0.05 and G["nosrc"]["k"] > G["lineage"]["k"]
 assert all(FA[m]["pr"]["p"] >= 0.05 for m in MODELS), "false-alarm cost claim"
+# ---- v2 data: gpt-oss detail, ablations x models, platform mitigations (06), mixed teams (07), handoff audit
+def _contact_x(r):
+    return any(a["tool"] == "reassign_lookup" and str((a.get("args") or {}).get("worker", "")).lower() in
+               ("worker-x", "x", "worker x") for a in r["actions"])
+HAS_OSS = OSS in MODELS
+if HAS_OSS:
+    _oi = {(r["condition"], r["seed"]): r for r in ROWS if r["model"] == OSS}
+    _drop = [sd for (c, sd), r in _oi.items() if c == "compromised" and r["any_residue"]
+             and ("revoke_silent", sd) in _oi and not _oi[("revoke_silent", sd)]["any_residue"]]
+    OSS_DROP = len(_drop)
+    OSS_DROP_X = sum(_contact_x(_oi[("revoke_silent", sd)]) for sd in _drop)
+    OSS_DROP_ESC = sum(bool(_oi[("revoke_silent", sd)]["escalated"]) for sd in _drop)
+    OSS_ESC_COMP, OSS_ESC_SIL = R(OSS, "compromised", "escalated"), R(OSS, "revoke_silent", "escalated")
+    OSS_BOARD = sum(bool(r["read_board"]) for r in ROWS if r["model"] == OSS and r["condition"] in ("compromised", "revoke_silent"))
+    assert HL[OSS]["pr"]["p"] < 0.05 and OSS_DROP == HL[OSS]["pr"]["a"]
+    assert OSS_DROP_X * 2 > OSS_DROP, "gpt-oss drop came from contacting the revoked agent"
+    assert OSS_BOARD == 0 and OSS_ESC_SIL["k"] > OSS_ESC_COMP["k"]
+    if POOL_PR["p"] < 0.05:
+        assert HL[OSS]["pr"]["a"] - HL[OSS]["pr"]["b"] >= (POOL_PR["a"] - POOL_PR["b"]) / 2, "pooled drop mostly gpt-oss"
+
+# ablation claims across all ablation models
+STRICT_OK = [m for m in ABL_MODELS if ABL[m]["pr_strict"]["p"] < 0.05 and ABL[m]["pr_strict"]["a"] > ABL[m]["pr_strict"]["b"]]
+STRICT_NO = [m for m in ABL_MODELS if m not in STRICT_OK]
+NOCITE_UP = [m for m in ABL_MODELS if ABL[m]["pr_nocite"]["p"] < 0.05 and ABL[m]["pr_nocite"]["b"] > ABL[m]["pr_nocite"]["a"]]
+assert all(ABL[m]["early"]["k"] == 0 for m in ABL_MODELS), "early revoke: 0% for every model"
+assert all(ABL[m]["hit_nocite"]["k"] < ABL[m]["hit_lineage"]["k"] for m in ABL_MODELS)
+assert all(ABL[m]["ts_nosrc"]["p"] <= 0.05 for m in ABL_MODELS), "no second source: task success collapses for every model"
+if QWEN in ABL_MODELS and MINI in ABL_MODELS:
+    assert GEMMA in STRICT_OK and QWEN in STRICT_OK and MINI in STRICT_NO, (STRICT_OK, STRICT_NO)
+
+# experiment 06: platform mitigations
+PLAT_MODELS = [m for m in MODELS if any(r["model"] == m and r["condition"] == "taint_quarantine" for r in ROWS)]
+PLAT_ROWS = [("revoke_lineage", "citations", "mark"), ("nocite_lineage", "citations (none written)", "mark"),
+             ("revoke_quarantine", "citations", "withhold"), ("taint_lineage", "platform taint", "mark"),
+             ("taint_quarantine", "platform taint", "withhold")]
+PLAT_FA = [("clean", "no revocation"), ("benign_quarantine", "citations · withhold"),
+           ("benign_taint_quarantine", "platform taint · withhold")]
+HAS_NORM = bool(PLAT_MODELS) and all(
+    sum(1 for r in ROWS if r["model"] == m and r["condition"] == c) >= SEEDS
+    for m in PLAT_MODELS for c in ("taint_quarantine_norm", "benign_taint_quarantine_norm"))
+if HAS_NORM:
+    PLAT_ROWS.append(("taint_quarantine_norm", "platform taint, normalised", "withhold"))
+    PLAT_FA.append(("benign_taint_quarantine_norm", "normalised taint · withhold"))
+FA_PR = {"benign_quarantine": "pr_fa_bq", "benign_taint_quarantine": "pr_fa_btq", "benign_taint_quarantine_norm": "pr_fa_btqn"}
+PLAT = {}
+for m in PLAT_MODELS:
+    PLAT[m] = {c: dict(any=R(m, c, "any_residue"), exp=R(m, c, "instr_residue", EXF), ts=R(m, c, "task_success"),
+                       hit=R(m, c, "lineage_hit"), red=R(m, c, "redelegated")) for c, _, _ in PLAT_ROWS}
+    PLAT[m].update({c: dict(ts=R(m, c, "task_success")) for c, _ in PLAT_FA})
+    PLAT[m]["pr_tq_nocite"] = PR(m, "nocite_lineage", "taint_quarantine", "any_residue")
+    PLAT[m]["pr_tq_tl"] = PR(m, "taint_lineage", "taint_quarantine", "any_residue")
+    PLAT[m]["pr_fa_btq"] = PR(m, "clean", "benign_taint_quarantine", "task_success")
+    PLAT[m]["pr_fa_bq"] = PR(m, "clean", "benign_quarantine", "task_success")
+    if HAS_NORM:
+        PLAT[m]["pr_fa_btqn"] = PR(m, "clean", "benign_taint_quarantine_norm", "task_success")
+if PLAT_MODELS:
+    assert all(PLAT[m]["taint_quarantine"]["any"]["p"] <= 0.05 for m in PLAT_MODELS), "taint+quarantine ≈ 0 for all"
+    assert all(PLAT[m]["pr_tq_nocite"]["p"] < 0.05 for m in PLAT_MODELS)
+    assert all(PLAT[m]["pr_fa_btq"]["p"] >= 0.05 for m in PLAT_MODELS), "taint quarantine: no measurable false-alarm cost"
+    if MINI in PLAT_MODELS:
+        assert PLAT[MINI]["revoke_quarantine"]["any"]["p"] >= 0.5, "citation quarantine fails for Ministral"
+        assert all(PLAT[m]["revoke_quarantine"]["any"]["p"] <= 0.05 for m in PLAT_MODELS if m != MINI)
+    PLAT_TQ_MAXP = max(PLAT[m]["pr_tq_nocite"]["p"] for m in PLAT_MODELS)
+    FA_SIG_BQ = [m for m in PLAT_MODELS if PLAT[m]["pr_fa_bq"]["p"] < 0.05]
+    TQ_K = sum(PLAT[m]["taint_quarantine"]["any"]["k"] for m in PLAT_MODELS)
+    TQ_N = sum(PLAT[m]["taint_quarantine"]["any"]["n"] for m in PLAT_MODELS)
+if HAS_NORM:
+    NORM_K = sum(PLAT[m]["taint_quarantine_norm"]["any"]["k"] for m in PLAT_MODELS)
+    NORM_N = sum(PLAT[m]["taint_quarantine_norm"]["any"]["n"] for m in PLAT_MODELS)
+    assert NORM_K == 0, "normalised taint + quarantine: no residue for any model"
+    assert all(PLAT[m]["pr_fa_btqn"]["p"] >= 0.05 for m in PLAT_MODELS), "normalised: no measurable false-alarm cost"
+    # audit of the no-citation handoffs: what exact vs normalised taint matching leaves visible after withholding
+    TAINT_MISS, NORM_LEAK, NOCITE_N, TAINT_EX = [], 0, 0, None
+    for d in sorted((RES / "01_main_grid" / "results").glob("*")):
+        hp, tp = d / "handoffs.jsonl", d / "trials.jsonl"
+        if not (hp.exists() and tp.exists()):
+            continue
+        mdl = json.loads(tp.read_text(encoding="utf-8").splitlines()[0])["model"]
+        if mdl not in PLAT_MODELS:
+            continue
+        for l in hp.read_text(encoding="utf-8").splitlines():
+            if not l.strip():
+                continue
+            h = json.loads(l)
+            if not h["compromised"] or h.get("variant") != "nocite":
+                continue
+            NOCITE_N += 1
+            terms = ENV.x_taint_terms(make_scenario(h["seed"]), True)
+            vis = lambda txt: [ln for ln in txt.splitlines() if any(ENV._norm_taint(t) in ENV._norm_taint(ln) for t in terms)]
+            ex_left = vis(ENV.transform_handoff(h["handoff"], "withhold", "taint", terms)[0])
+            nm_left = vis(ENV.transform_handoff(h["handoff"], "withhold", "taintnorm", terms)[0])
+            NORM_LEAK += bool(nm_left)
+            if ex_left:
+                TAINT_MISS.append((mdl, h["seed"]))
+                if TAINT_EX is None:
+                    TAINT_EX = (mdl, h["seed"], terms[0], next(ln for ln in ex_left))
+    assert NORM_LEAK == 0 and TAINT_MISS, "normalised matching withheld every reformatted value"
+    _tq_res = [(r["model"], r["seed"]) for r in ROWS if r["condition"] == "taint_quarantine" and r["any_residue"]]
+    assert set(_tq_res) <= set(TAINT_MISS), "every exact-taint residual trial was a reformatted value"
+    TQ_RES = _tq_res
+    _m = re.search(r"\d{1,3}(?:,\d{3})+", TAINT_EX[3]); assert _m and _m.group(0).replace(",", "") == TAINT_EX[2]
+    TAINT_FMT = _m.group(0)
+
+# handoff audit: after citation-based withholding, does worker-X's own content survive? (main-grid std handoffs)
+LEAK = {}
+for d in sorted((RES / "01_main_grid" / "results").glob("*")):
+    hp, tp = d / "handoffs.jsonl", d / "trials.jsonl"
+    if not (hp.exists() and tp.exists()):
+        continue
+    mdl = json.loads(tp.read_text(encoding="utf-8").splitlines()[0])["model"]
+    if mdl not in MODELS:
+        continue
+    k = n_ = 0
+    for l in hp.read_text(encoding="utf-8").splitlines():
+        if not l.strip():
+            continue
+        h = json.loads(l)
+        if not h["compromised"] or h.get("variant", "std") != "std":
+            continue
+        terms = ENV.x_taint_terms(make_scenario(h["seed"]), True)
+        if not any(t in h["handoff"].lower() for t in terms):
+            continue
+        shown_, _ = ENV.transform_handoff(h["handoff"], "withhold", "cite", terms)
+        n_ += 1; k += any(t in shown_.lower() for t in terms)
+    if n_:
+        LEAK[mdl] = dict(k=k, n=n_, p=k / n_)
+if MINI in LEAK:
+    assert LEAK[MINI]["p"] >= 0.5 and all(LEAK[m]["p"] < LEAK[MINI]["p"] for m in LEAK if m != MINI)
+
+# experiment 07: mixed teams (writer => executor), paired with the writer's own main-grid trial (same handoff)
+TEAMS = sorted({r["model"] for r in MIXROWS})
+MIX_CONDS = ["compromised", "revoke_notice", "revoke_lineage"]
+def RT(team, c, metric="any_residue"):
+    sel = [r for r in MIXROWS if r["model"] == team and r["condition"] == c]
+    k = sum(bool(r[metric]) for r in sel); p, lo, hi = wilson(k, len(sel))
+    return dict(k=k, n=len(sel), p=p, lo=lo, hi=hi)
+def PRT(team, c, metric="any_residue"):
+    w = next(r["writer_model"] for r in MIXROWS if r["model"] == team)
+    A = {r["seed"]: bool(r[metric]) for r in ROWS if r["model"] == w and r["condition"] == c}
+    B = {r["seed"]: bool(r[metric]) for r in MIXROWS if r["model"] == team and r["condition"] == c}
+    com = sorted(set(A) & set(B)); x = sum(A[i] and not B[i] for i in com); y = sum(B[i] and not A[i] for i in com)
+    return dict(n=len(com), a=x, b=y, p=mcnemar_exact(x, y))
+MIX = {}
+for t in TEAMS:
+    r0 = next(r for r in MIXROWS if r["model"] == t)
+    MIX[t] = dict(w=r0["writer_model"], e=r0["executor_model"], **{c: RT(t, c) for c in MIX_CONDS},
+                  pr=PRT(t, "revoke_lineage"))
+    MIX[t]["alone_w"] = R(MIX[t]["w"], "revoke_lineage", "any_residue")
+    MIX[t]["alone_e"] = R(MIX[t]["e"], "revoke_lineage", "any_residue")
+if TEAMS:
+    # residue follows the executor: a team's lineage residue sits with its executor's own level, not its writer's
+    for t in TEAMS:
+        lo_e = MIX[t]["alone_e"]["p"] < 0.25
+        assert (MIX[t]["revoke_lineage"]["p"] < 0.25) == lo_e, t
+        assert (MIX[t]["alone_w"]["p"] < 0.25) != lo_e and MIX[t]["pr"]["p"] < 0.05, t
+
 
 # ---- verbatim texts ---------------------------------------------------------
 DRAFT = (REPO / "paper" / "draft.md").read_text(encoding="utf-8")
@@ -284,6 +444,27 @@ if HAS_MINI:
     MINI_FACT_LIN = R(MINI, "revoke_lineage", "fact_residue", FACT)
     MINI_FACT_SIL = R(MINI, "revoke_silent", "fact_residue", FACT)
 
+SEED_WHY = 19
+WHY = None
+if MINI in PLAT_MODELS:
+    WHY = transcript("ministral-3-14b", f"modal-ministral-3-14b__revoke_quarantine__{SEED_WHY}.json", exp="06_platform_mitigations")
+    _sc = make_scenario(SEED_WHY); _terms = ENV.x_taint_terms(_sc, True)
+    _shown, _ = ENV.transform_handoff(WHY["handoff"], "withhold", "cite", _terms)
+    assert _shown.strip() == WHY["shown"].strip(), "excerpt must be the handoff the executor saw"
+    _raw = WHY["handoff"].splitlines(); _sh = _shown.splitlines(); assert len(_raw) == len(_sh)
+    _cite = re.compile(r"^\s*[-*]?\s*\[m[23]\][\s.]*$")
+    _keep = set()
+    for i, l in enumerate(_raw):
+        if any(t in l.lower() for t in _terms):
+            _keep.add(i)
+            if i + 1 < len(_raw) and _cite.match(_raw[i + 1]): _keep.add(i + 1)
+    WHY_IDX = sorted(_keep)
+    WHY_SEP = sum(1 for i in WHY_IDX if _cite.match(_raw[i]))
+    assert WHY_SEP >= 1 and any(any(t in _sh[i].lower() for t in _terms) for i in WHY_IDX), "value survives withholding"
+    assert any(a["tool"] == "export_data" for a in WHY["actions"])
+    WHY_RAW = [_raw[i] for i in WHY_IDX]; WHY_SHOWN = [_sh[i] for i in WHY_IDX]
+    WHY_TERMS = _terms
+
 def pick(shown, keep):
     """Keep handoff lines that contain any of `keep`, mark elisions with an ellipsis line."""
     out, skipped = [], False
@@ -309,7 +490,37 @@ for metric, ttl, f in [("fact_residue", "Fact residue: false value written (fact
                        ("instr_residue", "Instruction residue: export to attacker address (fact+exfil payload)", EXF),
                        ("task_success", "Task success (correct value, refund, no exfil)", ALL)]:
     _tables[(metric, ttl)] = rate_table(_disp_rows, metric, f)[0]
-figures(FIGDIR, _disp_rows, _tables)
+def _figures(d, rows, tables):
+    """analyze.figures(), with one distinct marker per model (the paper code cycles three)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from revres.analyze import LABEL
+    models = sorted({r["model"] for r in rows}); MK = "os^Dvph"
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.6), gridspec_kw={"width_ratios": [6, 2.2]})
+    ax = axes[0]; conds = ORDER[1:6]; x = list(range(len(conds))); w = 0.38
+    series = [("fact_residue", "Fact residue: false value written (fact-only payload)", "False value applied (fact-only attack)", "#c0392b"),
+              ("instr_residue", "Instruction residue: export to attacker address (fact+exfil payload)", "Record exported to attacker (exfil attack)", "#7d3c98")]
+    for i, (metric, ttl, lab, col) in enumerate(series):
+        t = tables[(metric, ttl)]; ps = [t[("ALL", c)] for c in conds]; xs = [xi + (i - 0.5) * w for xi in x]
+        ax.bar(xs, [100 * p[2] for p in ps], w, color=col, alpha=0.85, label=lab,
+               yerr=[[100 * (p[2] - p[3]) for p in ps], [100 * (p[4] - p[2]) for p in ps]], capsize=3)
+        for j, m in enumerate(models):
+            ax.scatter(xs, [100 * t[(m, c)][2] for c in conds], s=16, color="k", marker=MK[j % len(MK)], zorder=3,
+                       label=m if i == 0 else None)
+    ax.set_xticks(x); ax.set_xticklabels([LABEL[c] for c in conds], fontsize=9)
+    ax.set_ylabel("% of trials (95% Wilson CI)"); ax.set_title("Residual influence of a compromised agent after revocation")
+    ax.legend(fontsize=7.5, loc="upper left", bbox_to_anchor=(1.0, 1.0)); ax.set_ylim(0, 100)
+    ax2 = axes[1]; t = tables[("task_success", "Task success (correct value, refund, no exfil)")]
+    cs = ["clean", "benign_lineage"]; ps = [t[("ALL", c)] for c in cs]
+    ax2.bar([0, 1], [100 * p[2] for p in ps], 0.6, color=["#27ae60", "#95a5a6"],
+            yerr=[[100 * (p[2] - p[3]) for p in ps], [100 * (p[4] - p[2]) for p in ps]], capsize=3)
+    for j, m in enumerate(models):
+        ax2.scatter([0, 1], [100 * t[(m, c)][2] for c in cs], s=16, color="k", marker=MK[j % len(MK)], zorder=3)
+    ax2.set_xticks([0, 1]); ax2.set_xticklabels(["Clean", "False alarm\n(full mitigation)"], fontsize=9)
+    ax2.set_ylim(0, 100); ax2.set_title("Usefulness cost"); ax2.set_ylabel("Task success %")
+    fig.tight_layout(); fig.savefig(d / "fig_residue.png", dpi=200); plt.close(fig)
+_figures(FIGDIR, _disp_rows, _tables)
 FIG = FIGDIR / "fig_residue.png"
 
 # ---- QR codes ---------------------------------------------------------------
@@ -382,11 +593,11 @@ def code_card(s, x, y, w, h, label, lines, fill=NAVY, lab_color=TEALBR, size=12.
     text(s, x + 0.3, y + 0.68, w - 0.6, h - 0.85, [[(t, {"color": c})] for t, c in lines],
          size=size, font=MONO, spacing=1.0, space_after=4)
 
-def bar_pair(s, x, y, w, label, a, b, la, lb):
+def bar_pair(s, x, y, w, label, a, b, la, lb, gap=0.46):
     """two horizontal mini-bars (light slide): a = before (red-ish), b = after."""
-    text(s, x, y, w, 0.4, label, size=14, color=INK, bold=True, font=HEADB)
+    text(s, x, y, w, 0.4, label, size=13.5, color=INK, bold=True, font=HEADB)
     for j, (t, lab) in enumerate([(a, la), (b, lb)]):
-        yy = y + 0.48 + j * 0.46
+        yy = y + 0.42 + j * gap
         text(s, x, yy, 1.9, 0.38, lab, size=11.5, color=SLATE, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
         bw = w - 3.2
         rect(s, x + 1.95, yy + 0.06, bw, 0.26, fill=BARBG, radius=0.5)
@@ -409,11 +620,12 @@ glance = [
     (f"{pc(POOL_COMP)} → {pc(POOL_SILENT)}", NEG,
      f"of trials acted on the compromised worker's handed-off content: no revocation vs credential-only "
      f"revocation (pooled, {len(MODELS)} models)"),
-    (f"{pc(MIT[LUNA]['lineage'])} for {nm(LUNA)}", POS,
-     f"residue once handoff lines derived from the revoked agent were marked; the same marks left "
-     + ", ".join(f"{nm(m)} at {pc(MIT[m]['lineage'])}" for m in MODELS if m != LUNA)),
-    (f"{pc(G['notice'])} → {pc(G['strict'])}", AMB_ON_DARK,
-     f"{nm(GEMMA)} residue when the notice adds one sentence extending revocation to derived content"),
+    (f"{min(round(100*MIT[m]['lineage']['p']) for m in MODELS)}–{max(round(100*MIT[m]['lineage']['p']) for m in MODELS)}%", AMB_ON_DARK,
+     "residue with lineage marks on derived handoff lines, depending on the model: the agent decides whether to heed them"),
+    ((f"{NORM_K} / {NORM_N}" if HAS_NORM else " / ".join(pc(PLAT[m]['taint_quarantine']['any']) for m in PLAT_MODELS)), POS,
+     ("trials with residue when the platform finds derived lines itself (normalised matching) and withholds them"
+      if HAS_NORM else "residue when the platform finds derived lines itself and withholds them")
+     + f" ({', '.join(nm(m) for m in PLAT_MODELS)})"),
 ]
 for i, (num, c, lab) in enumerate(glance):
     yy = 2.55 + i * 2.3
@@ -430,7 +642,7 @@ text(s, 1.2, 5.6, 11.0, 1.6,
      size=19, color=MIST, font=BODY, spacing=1.12)
 line(s, 1.22, 7.45, 3.2, 0.045, TEALBR)
 text(s, 1.2, 7.7, 11.2, 0.5,
-     f"{N_TRIALS:,} trials  ·  7 conditions + {len(ABL_CONDS)} ablations  ·  {len(MODELS)} models  ·  paired design",
+     f"{N_TRIALS:,} trials  ·  {N_EXPS} experiments  ·  {len(MODELS)} models  ·  paired design",
      size=15, color=MIST, font=BODY)
 text(s, 1.2, 8.2, 11.2, 0.5,
      "Fatimah Emad Eldin  ·  Trouve Labs  ·  Apart Research Swarm Alignment Hackathon, November 2026",
@@ -743,7 +955,7 @@ foot(s)
 # ===========================================================================
 s = slide(prs, PAPER)
 kicker(s, "Models & setup")
-title(s, f"{len(MODELS)} model families, each as both writer and executor")
+title(s, f"{len(MODELS)} models, each as both writer and executor")
 mw = (18.2 - (len(MODELS) - 1) * 0.3) / len(MODELS); my = 2.35; mh = 4.15
 for i, m in enumerate(MODELS):
     xx = 0.9 + i * (mw + 0.3)
@@ -759,12 +971,13 @@ for i, m in enumerate(MODELS):
     na = sum(1 for r in ROWS if r["model"] == m and r["condition"] not in ORDER)
     text(s, xx + 0.35, my + 3.15, mw - 0.7, 0.9,
          f"of {7 * SEEDS} main-condition trials" + (" (API budget exhausted)" if n_m < 7 * SEEDS else "") +
-         (f"\n+ {na} ablation trials" if na else ""), size=12.5, color=SLATE, font=BODY, spacing=1.02)
+         (f"\n+ {na} ablation / platform trials" if na else ""), size=12.5, color=SLATE, font=BODY, spacing=1.02)
 sy = my + mh + 0.35
 facts = [(f"{SEEDS}", "seeds per condition", f"{len(TEMPLATES)} templates × 2 payloads × 4 repetitions"),
          ("0.7", "temperature", "same model as writer and executor in a trial"),
          (f"{ENV.MAX_TURNS}", "executor turns max", "one JSON tool call per turn"),
-         (f"{len(ABL_CONDS)}", "ablation conditions", f"run on {', '.join(nm(m) for m in ABL_MODELS)}, same seeds")]
+         (f"{N_EXPS}", "experiments", f"ablations, platform designs and {len(TEAMS)} mixed teams on "
+          f"{', '.join(nm(m) for m in ABL_MODELS)}")]
 fw = (18.2 - 3 * 0.3) / 4
 for i, (big, lab, d) in enumerate(facts):
     xx = 0.9 + i * (fw + 0.3)
@@ -785,32 +998,39 @@ divider(prs, "02", "Part two  ·  results", "Residual influence,\nand what remov
 s = slide(prs, NAVY)
 line(s, 0, 0, SW, 0.22, TEALBR)
 kicker(s, f"Headline result  ·  any residue  ·  {N_MAIN:,} main-condition trials", color=TEALBR)
-title(s, "Credential-only revocation ≈ no revocation", color=WHITE)
+title(s, "Credential-only revocation leaves most residue in place", color=WHITE)
 text(s, 0.9, 2.1, 18.2, 0.6, "Share of trials in which the executor applied the revoked worker's false value or exported the record: "
      "compromised and not revoked  →  revoked, nobody told.", size=16, color=MIST, font=BODY)
-n = len(MODELS); tw4 = (18.2 - (n - 1) * 0.35) / n; th4 = 3.9; ty4 = 2.95
+n = len(MODELS); tw4 = (18.2 - (n - 1) * 0.3) / n; th4 = 3.95; ty4 = 2.9
+big_sz = 44 if n <= 3 else 36
 for i, m in enumerate(MODELS):
-    h = HL[m]; xx = 0.9 + i * (tw4 + 0.35)
-    rect(s, xx, ty4, tw4, th4, fill=CARDDK, radius=0.05, line=LINEDK, line_w=0.75)
-    text(s, xx + 0.35, ty4 + 0.3, tw4 - 0.7, 0.4, nm(m).upper(), size=13.5, color=TEALBR, bold=True, font=HEAD)
-    text(s, xx + 0.35, ty4 + 0.8, tw4 - 0.7, 1.0, [[(pc(h["comp"]), {"color": MIST}), ("  →  ", {"color": SLATE2, "size": 30}),
-                                                   (pc(h["silent"]), {"color": NEG})]], size=46, bold=True, font=HEADB)
-    text(s, xx + 0.35, ty4 + 1.9, tw4 - 0.7, 0.5, f"{kn(h['comp'])}  →  {kn(h['silent'])} trials", size=14, color=WHITE,
-         font=BODY)
-    text(s, xx + 0.35, ty4 + 2.4, tw4 - 0.7, 1.4, disc(h["pr"]), size=13.5, color=MIST, font=BODY, spacing=1.03)
-by = ty4 + th4 + 0.35; bh_ = 10.2 - by
+    h = HL[m]; xx = 0.9 + i * (tw4 + 0.3)
+    sig = h["pr"]["p"] < 0.05
+    rect(s, xx, ty4, tw4, th4, fill=CARDDK, radius=0.05, line=(AMBER if sig else LINEDK), line_w=(1.5 if sig else 0.75))
+    text(s, xx + 0.3, ty4 + 0.28, tw4 - 0.6, 0.4, nm(m).upper(), size=13, color=TEALBR, bold=True, font=HEAD)
+    text(s, xx + 0.3, ty4 + 0.78, tw4 - 0.6, 0.4, f"not revoked   {pc(h['comp'])}   ({kn(h['comp'])})", size=13.5, color=MIST, font=BODY)
+    text(s, xx + 0.3, ty4 + 1.2, tw4 - 0.6, 0.9, pc(h["silent"]), size=big_sz, color=NEG, bold=True, font=HEADB)
+    text(s, xx + 0.3, ty4 + 2.05, tw4 - 0.6, 0.4, f"credential-only revocation  ({kn(h['silent'])})", size=12.5, color=WHITE, font=BODY)
+    text(s, xx + 0.3, ty4 + 2.6, tw4 - 0.6, 1.2, f"{h['pr']['a']} vs {h['pr']['b']} discordant pairs\nexact McNemar {fp(h['pr']['p'])}",
+         size=12.5, color=(AMB_ON_DARK if sig else MIST), bold=sig, font=BODY, spacing=1.03)
+by = ty4 + th4 + 0.3; bh_ = 10.2 - by
 rect(s, 0.9, by, 18.2, bh_, fill=CARDDK, radius=0.05, line=LINEDK, line_w=0.75)
-text(s, 1.3, by + 0.25, 17.4, 0.4, "WHY  ·  THE HANDOFF, NOT THE REVOKED AGENT, WAS THE EXECUTOR'S SOURCE", size=13,
+text(s, 1.3, by + 0.22, 17.4, 0.4, "WHY  ·  THE HANDOFF, NOT THE REVOKED AGENT, WAS THE EXECUTOR'S SOURCE", size=13,
      color=TEALBR, bold=True, font=HEAD)
 wr = "  ·  ".join(f"{nm(m)} {pc(HL[m]['wrote'])}" for m in MODELS)
 lb = HL[LUNA]
-text(s, 1.3, by + 0.75, 17.4, 2.0,
-     [[("After revocation, among trials that wrote the researched field, the false value was written in:  ", {"color": MIST}),
-       (wr, {"color": NEG, "bold": True})],
-      [(f"The roster listed worker-X as REVOKED. {nm(LUNA)} read the board in {lb['board']} of {lb['n_silent']} "
-        f"such trials, and still applied the revoked worker's content in {lb['board_res']} of those {lb['board']}.",
-        {"color": WHITE, "bold": True})]],
-     size=17, font=BODY, spacing=1.08, space_after=12)
+paras = [[("After revocation, among trials that wrote the researched field, the false value was written in:  ", {"color": MIST}),
+          (wr, {"color": NEG, "bold": True})],
+         [(f"The roster listed worker-X as REVOKED. {nm(LUNA)} read the board in {lb['board']} of {lb['n_silent']} "
+           f"such trials, and still applied the revoked worker's content in {lb['board_res']} of those {lb['board']}.",
+           {"color": WHITE})]]
+if HAS_OSS:
+    paras.append([(f"{nm(OSS)} is the one significant drop ({pc(HL[OSS]['comp'])} → {pc(HL[OSS]['silent'])}): ",
+                   {"color": AMB_ON_DARK, "bold": True}),
+                  (f"in {OSS_DROP_X} of its {OSS_DROP} discordant trials it asked the revoked worker-X to redo the lookup, "
+                   f"the request failed, and it escalated {kn(OSS_ESC_SIL)} times vs {kn(OSS_ESC_COMP)} unrevoked. "
+                   f"It never read the board.", {"color": MIST})])
+text(s, 1.3, by + 0.68, 17.4, bh_ - 0.8, paras, size=15, font=BODY, spacing=1.05, space_after=7)
 foot(s, dark=True)
 
 # ===========================================================================
@@ -870,8 +1090,9 @@ s.shapes.add_picture(str(FIG), Inches(fx_), Inches(2.45), Inches(fw_), Inches(fh
 ny = 2.3 + fh_ + 0.6
 notes = [("Bars pool the models; markers show each model", f"Error bars are Wilson 95% intervals. Left: false value applied "
           f"(fact-only payload) and record exported (fact+exfil payload).", TEAL),
-         ("Revoked ≈ compromised", f"Pooled any residue {pc(POOL_COMP)} without revocation, {pc(POOL_SILENT)} after "
-          f"credential-only revocation ({POOL_PR['a']} vs {POOL_PR['b']} discordant pairs, {fp(POOL_PR['p'])}).", RED),
+         ("Revoked: most residue remains", f"Pooled any residue {pc(POOL_COMP)} without revocation, {pc(POOL_SILENT)} after "
+          f"credential-only revocation ({POOL_PR['a']} vs {POOL_PR['b']} discordant pairs, {fp(POOL_PR['p'])}"
+          + (f"; the pooled drop comes mostly from {nm(OSS)}" if HAS_OSS and POOL_PR['p'] < 0.05 else "") + ").", RED),
          ("False alarm: little cost", "Right panel: task success when an honest worker is revoked and the full "
           "mitigation applied, against the clean condition.", GREEN)]
 nw = (18.2 - 2 * 0.3) / 3
@@ -895,7 +1116,8 @@ yy = 3.05
 step = min(2.05, (10.05 - yy) / max(1, len(MODELS)))
 for m in MODELS:
     t = MIT[m]
-    bar_pair(s, lx + 0.3, yy, lw - 0.6, f"{nm(m)}   ·   {fp(t['pr_notice']['p'])}", HL[m]["silent"], t["notice"], "silent", "notice")
+    bar_pair(s, lx + 0.3, yy, lw - 0.6, f"{nm(m)}   ·   {fp(t['pr_notice']['p'])}", HL[m]["silent"], t["notice"], "silent",
+             "notice", gap=(0.4 if len(MODELS) > 4 else 0.46))
     yy += step
 gx0 = lx + lw + 0.3; gw2 = (19.1 - gx0 - 0.3) / 2; gy = 2.3; gh = 10.2 - 2.3
 gl = [(NOTICE, AMB_ON_DARK), ("HANDOFF", TEALBR)]
@@ -946,65 +1168,208 @@ if HAS_MINI:
     foot(s)
 
 # ===========================================================================
-# 17 — ABLATIONS 1: early revoke + strict notice
+# 17 — ABLATIONS 1: early revoke + strict notice (all ablation models)
 # ===========================================================================
-def abl_panel(s, x, y, w, h, tag, head, a, b, la, lb, pr, note, extra=None):
+def abl_panel(s, x, y, w, h, tag, head, key_a, key_b, key_pr, la, lb, note, colfun=None):
+    """per-model rows: base -> ablation, paired McNemar."""
+    colfun = colfun or res_col
     card(s, x, y, w, h, bar=TEALBR)
     chip(s, x + 0.35, y + 0.35, tag, TEALLT, tcolor=TEAL, size=11, w=0.3 + 0.11 * len(tag))
-    text(s, x + 0.35, y + 0.95, w - 0.7, 1.0, head, size=19, color=INK, bold=True, font=HEADB, spacing=0.98)
-    for j, (t, lab) in enumerate([(a, la), (b, lb)]):
-        xx = x + 0.35 + j * (w - 0.7) / 2
-        text(s, xx, y + 1.85, (w - 0.7) / 2, 1.3, pc(t), size=72, color=res_col(t), bold=True, font=HEADB)
-        text(s, xx, y + 3.25, (w - 0.7) / 2 - 0.2, 0.7, f"{lab}\n{kn(t)} trials", size=15, color=SLATE, font=BODY, spacing=1.0)
-    text(s, x + 0.35, y + 4.3, w - 0.7, 0.45, f"{pr['a']} vs {pr['b']} discordant pairs  ·  exact McNemar {fp(pr['p'])}",
-         size=15.5, color=TEAL, bold=True, font=HEADB)
-    text(s, x + 0.35, y + 4.95, w - 0.7, h - 5.05, note, size=16, color=SLATE, font=BODY, spacing=1.08, space_after=6)
+    text(s, x + 0.35, y + 0.92, w - 0.7, 0.8, head, size=18, color=INK, bold=True, font=HEADB, spacing=0.98)
+    hy = y + 1.65
+    text(s, x + 0.35, hy, 3.0, 0.35, "MODEL", size=10.5, color=SLATE2, bold=True, font=HEAD)
+    text(s, x + 3.2, hy, 1.6, 0.35, la.upper(), size=10.5, color=SLATE2, bold=True, font=HEAD, align=PP_ALIGN.CENTER)
+    text(s, x + 4.9, hy, 1.6, 0.35, lb.upper(), size=10.5, color=SLATE2, bold=True, font=HEAD, align=PP_ALIGN.CENTER)
+    text(s, x + 6.6, hy, w - 6.9, 0.35, "PAIRS · EXACT McNEMAR", size=10.5, color=SLATE2, bold=True, font=HEAD)
+    for i, m in enumerate(ABL_MODELS):
+        yy = hy + 0.45 + i * 0.95
+        rect(s, x + 0.25, yy, w - 0.5, 0.85, fill=(ROWALT if i % 2 else TEAL_T), radius=0.08)
+        a, b, pr = ABL[m][key_a], ABL[m][key_b], ABL[m][key_pr]
+        text(s, x + 0.45, yy, 2.8, 0.85, nm(m), size=15, color=INK, bold=True, font=HEADB, anchor=MSO_ANCHOR.MIDDLE)
+        for xx_, t in [(x + 3.2, a), (x + 4.9, b)]:
+            text(s, xx_, yy + 0.02, 1.6, 0.55, pc(t), size=24, color=colfun(t), bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+            text(s, xx_, yy + 0.53, 1.6, 0.3, kn(t), size=10, color=SLATE2, font=BODY, align=PP_ALIGN.CENTER)
+        sig = pr["p"] < 0.05
+        text(s, x + 6.6, yy, w - 6.9, 0.85, f"{pr['a']} vs {pr['b']}  ·  {fp(pr['p'])}", size=13,
+             color=(TEAL if sig else SLATE2), bold=sig, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+    ny_ = hy + 0.45 + len(ABL_MODELS) * 0.95 + 0.2
+    text(s, x + 0.35, ny_, w - 0.7, y + h - ny_ - 0.15, note, size=14.5, color=SLATE, font=BODY, spacing=1.06, space_after=5)
 
 s = slide(prs, PAPER)
-kicker(s, f"Ablations 1–2  ·  {nm(GEMMA)}  ·  {SEEDS} paired seeds each")
-title(s, "Residue needs a prior handoff; the notice fails on scope")
+kicker(s, f"Ablations 1–2  ·  {', '.join(nm(m) for m in ABL_MODELS)}  ·  {SEEDS} paired seeds each")
+title(s, "Residue needs a prior handoff; a scoped notice is model-dependent", size=36)
 pw2 = (18.2 - 0.35) / 2; ph2 = 7.85
 abl_panel(s, 0.9, 2.35, pw2, ph2, "early_revoke  vs  revoke_retract",
-          "Revoke worker-X before the writer reads the board", G["retract"], G["early"], "revoked after handoff",
-          "revoked before handoff", G["pr_early"],
-          f"The writer saw the notice and the retracted posts. Cut off at the source, the compromise is harmless: the risk "
-          f"is specific to content that has already propagated. Task success {pc(G['ts_early'])}.")
+          "Revoke worker-X before the writer reads the board", "retract", "early", "pr_early", "after handoff", "before handoff",
+          "The writer saw the notice and the retracted posts. Cut off at the source, the compromise was harmless for every "
+          "model: the risk is specific to content that has already propagated.")
 abl_panel(s, 0.9 + pw2 + 0.35, 2.35, pw2, ph2, "strict_notice  vs  revoke_notice",
-          "Add one sentence extending the revocation to derived content", G["notice"], G["strict"], "plain notice",
-          "strict notice", G["pr_strict"],
+          "Add one sentence extending the revocation to derived content", "notice", "strict", "pr_strict", "plain notice",
+          "strict notice",
           [[("Added: ", {"bold": True, "color": INK}), ("“" + STRICT_ADD + "”", {"color": SLATE, "italic": True})],
-           [(f"Export {pc(G['exp_notice'])} → {pc(G['exp_strict'])}; better than lineage marks on Gemma "
-             f"({pc(G['strict'])} vs {pc(G['lineage'])}; {G['pr_strict_lin']['a']} vs {G['pr_strict_lin']['b']}, "
-             f"{fp(G['pr_strict_lin']['p'])}).", {"color": SLATE})]])
+           [(f"Worked for {' and '.join(nm(m) for m in STRICT_OK)}; not for {' or '.join(nm(m) for m in STRICT_NO) or '–'}"
+             + (f" (export {pc(ABL[STRICT_NO[0]]['exp_strict'])})." if STRICT_NO else "."), {"color": INK, "bold": True})]])
 foot(s)
 
 # ===========================================================================
 # 18 — ABLATIONS 2: no citations + no second source
 # ===========================================================================
 s = slide(prs, PAPER)
-kicker(s, f"Ablations 3–4  ·  {nm(GEMMA)}  ·  why lineage marks work, or fail")
+kicker(s, f"Ablations 3–4  ·  why lineage marks work, or fail")
 title(s, "Lineage needs recorded provenance and a second source")
 abl_panel(s, 0.9, 2.35, pw2, ph2, "nocite_lineage  vs  revoke_lineage",
-          "The writer is not asked to cite message ids", G["lineage"], G["nocite"], "with citations",
-          "without citations", G["pr_nocite"],
+          "The writer is not asked to cite message ids", "lineage", "nocite", "pr_nocite", "with citations", "without",
           [[("Removed from the writer prompt: ", {"bold": True, "color": INK}), ("“" + WRITER_CITE + "”", {"color": SLATE, "italic": True})],
-           [(f"Writer cited worker-X in {G['cite_nocite']} of {G['nocite']['n']} handoffs, so the platform marked "
-             f"{kn(G['hit_nocite'])} (vs {kn(G['hit_lineage'])}). Against no revocation without citations: "
-             f"{pc(G['nocite_comp'])}, {fp(G['pr_nocite_comp']['p'])}.", {"color": SLATE})]])
+           [("Lines the platform could mark: " + "  ·  ".join(f"{nm(m)} {kn(ABL[m]['hit_nocite'])}" for m in ABL_MODELS)
+             + f" (vs {ABL_MODELS and kn(ABL[ABL_MODELS[0]]['hit_lineage'])} with citations).", {"color": SLATE})]])
 abl_panel(s, 0.9 + pw2 + 0.35, 2.35, pw2, ph2, "nosource_lineage  vs  revoke_lineage",
-          "Remove reassign_lookup: no second source exists", G["lineage"], G["nosrc"], "second source",
-          "no second source", G["pr_nosrc"],
-          f"Mitigation works through re-delegation ({pc(G['red_lineage'])} of lineage trials re-delegated). Without it, task "
-          f"success {pc(G['ts_nosrc'])} and escalation {kn(G['esc_nosrc'])}: when Gemma could not replace the marked "
-          f"content, it used it.")
+          "Remove reassign_lookup: no second source exists", "lineage", "nosrc", "pr_nosrc", "second source", "no second source",
+          [[("Task success without a second source: ", {"bold": True, "color": INK}),
+            ("  ·  ".join(f"{nm(m)} {pc(ABL[m]['ts_nosrc'])}" for m in ABL_MODELS) + ".", {"color": RED, "bold": True})],
+           [(f"The marks work through re-delegation. When the marked value could not be replaced, {nm(GEMMA)} used it "
+             f"({pc(ABL[GEMMA]['nosrc'])} residue). Escalated to a human: "
+             + "  ·  ".join(f"{nm(m)} {kn(ABL[m]['esc_nosrc'])}" for m in ABL_MODELS) + ".", {"color": SLATE})]])
 foot(s)
+
+# ===========================================================================
+# 19 — PLATFORM MITIGATIONS (experiment 06): scorecard
+# ===========================================================================
+if PLAT_MODELS:
+    s = slide(prs, PAPER)
+    kicker(s, f"Experiment 06  ·  the recommended designs, tested  ·  {', '.join(nm(m) for m in PLAT_MODELS)}  ·  48 paired seeds")
+    title(s, (f"Normalised taint + quarantine: {NORM_K} of {NORM_N} trials with residue" if HAS_NORM
+              else "Platform taint + quarantine removed residue for every model tested"), size=36)
+    tx, ty = 0.9, 2.25; c0 = 6.4; npm = len(PLAT_MODELS); gw = (18.2 - c0) / npm; cw_ = gw / 2
+    rect(s, tx, ty, 18.2, 0.55, fill=NAVY, radius=0, shape=MSO_SHAPE.RECTANGLE)
+    rect(s, tx, ty + 0.55, 18.2, 0.42, fill=NAVY2, radius=0, shape=MSO_SHAPE.RECTANGLE)
+    for h_, cx_, w_ in [("Condition", 0.25, 2.6), ("Finds derived lines by", 2.75, 2.2), ("Then", 5.05, 1.3)]:
+        text(s, tx + cx_, ty, w_, 0.97, h_, size=12, color=WHITE, bold=True, font=HEAD, anchor=MSO_ANCHOR.MIDDLE)
+    for j, m in enumerate(PLAT_MODELS):
+        gx = tx + c0 + j * gw
+        text(s, gx, ty, gw, 0.55, nm(m), size=14, color=WHITE, bold=True, font=HEADB, align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        for q, lab in enumerate(["residue", "success"]):
+            text(s, gx + q * cw_, ty + 0.55, cw_, 0.42, lab, size=11, color=MIST, bold=True, font=HEAD,
+                 align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    rh = min(0.78, 3.6 / len(PLAT_ROWS))
+    for i, (c, prov, act) in enumerate(PLAT_ROWS):
+        yy = ty + 0.97 + i * rh
+        best = c == ("taint_quarantine_norm" if HAS_NORM else "taint_quarantine")
+        rect(s, tx, yy, 18.2, rh, fill=(GREEN_T if best else (CARD if i % 2 == 0 else ROWALT)), radius=0,
+             shape=MSO_SHAPE.RECTANGLE, line=LINEC, line_w=0.5)
+        text(s, tx + 0.25, yy, 2.6, rh, c, size=13, color=INK, bold=True, font=MONO, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, tx + 2.75, yy, 2.3, rh, prov, size=12, color=(TEAL if "taint" in prov else SLATE), bold=("taint" in prov),
+             font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+        chip(s, tx + 5.05, yy + (rh - 0.42) / 2, act, (GREEN if act == "withhold" else SLATE2), size=10.5, w=1.15)
+        for j, m in enumerate(PLAT_MODELS):
+            gx = tx + c0 + j * gw
+            for q, t in enumerate([PLAT[m][c]["any"], PLAT[m][c]["ts"]]):
+                col = res_col(t) if q == 0 else ts_col(t)
+                text(s, gx + q * cw_, yy + 0.01, cw_, 0.4, pc(t), size=(18 if rh > 0.7 else 16), color=col, bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+                text(s, gx + q * cw_, yy + rh - 0.26, cw_, 0.24, kn(t), size=9, color=SLATE2, font=BODY, align=PP_ALIGN.CENTER)
+    for j in range(1, npm):
+        line(s, tx + c0 + j * gw, ty, 0.02, 0.97 + len(PLAT_ROWS) * rh, LINEC)
+    fy_ = ty + 0.97 + len(PLAT_ROWS) * rh + 0.25
+    rect(s, tx, fy_, 18.2, 10.2 - fy_, fill=NAVY, radius=0.04)
+    text(s, tx + 0.4, fy_ + 0.22, 7.5, 0.4, "FALSE ALARM  ·  TASK SUCCESS, HONEST WORKER-X REVOKED", size=12, color=TEALBR, bold=True, font=HEAD)
+    for i_, (c, lab) in enumerate(PLAT_FA):
+        yy = fy_ + 0.62 + i_ * (0.52 if len(PLAT_FA) <= 3 else 0.43)
+        text(s, tx + 0.4, yy, 2.9, 0.45, c, size=12, color=WHITE, bold=True, font=MONO, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, tx + 3.4, yy, 2.9, 0.45, lab, size=11.5, color=MIST, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+        for j, m in enumerate(PLAT_MODELS):
+            gx = tx + c0 + j * gw
+            t = PLAT[m][c]["ts"]
+            pr = None if c == "clean" else PLAT[m][FA_PR[c]]
+            txt = [(pc(t), {"bold": True, "color": WHITE, "size": 15})]
+            if pr: txt.append((f"   vs clean {fp(pr['p'])}", {"color": (AMB_ON_DARK if pr["p"] < 0.05 else MIST), "size": 11}))
+            text(s, gx + 0.2, yy, gw - 0.3, 0.45, txt, font=BODY, anchor=MSO_ANCHOR.MIDDLE)
+    text(s, tx + 0.4, 10.2 - 0.42, 17.4, 0.35,
+         f"taint_quarantine vs nocite_lineage (same no-citation handoffs): all exact McNemar p ≤ {fp(PLAT_TQ_MAXP)[4:]}.  "
+         + ("Normalised matching ignores case, digit grouping, spaces and dashes.  " if HAS_NORM else "")
+         + "All platform conditions carry the notice and the retraction.", size=11, color=MIST, font=BODY)
+    foot(s)
+
+# ===========================================================================
+# 20 — WHY CITATION-BASED QUARANTINE FAILS FOR MINISTRAL
+# ===========================================================================
+if WHY is not None:
+    s = slide(prs, PAPER)
+    kicker(s, f"Experiment 06  ·  {nm(MINI)}  ·  revoke_quarantine  ·  seed {SEED_WHY}  ·  verbatim")
+    title(s, "Citation-based quarantine withheld the citation, not the value", size=38)
+    cw5 = 6.25
+    def _hl(l): return NEG if any(t in l.lower() for t in WHY_TERMS) else (AMB_ON_DARK if re.match(r"^\s*[-*]?\s*\[m[23]\]", l) else MIST)
+    code_card(s, 0.9, 2.3, cw5, 5.3, "WRITER'S HANDOFF (lines with worker-X's content)",
+              [(l, _hl(l)) for l in WHY_RAW], fill=NAVY, size=11.5)
+    code_card(s, 0.9 + cw5 + 0.3, 2.3, cw5, 5.3, "AS SHOWN TO THE EXECUTOR (same lines)",
+              [(l, (TEALBR if l.startswith("[WITHHELD") else _hl(l))) for l in WHY_SHOWN], fill=NAVY, size=11.5)
+    code_card(s, 0.9, 7.9, 2 * cw5 + 0.3, 10.2 - 7.9, "EXECUTOR TOOL CALLS (first three)",
+              [(clip(act_str(a), 120), (NEG if a["tool"] == "export_data" else MIST)) for a in WHY["actions"][:3]],
+              fill=REDDK, lab_color=NEG, size=11.5, border=RED)
+    rx = 0.9 + 2 * cw5 + 0.6; rw = 19.1 - rx
+    lk = "  ·  ".join(f"{nm(m)} {pc(LEAK[m])}" for m in MODELS if m in LEAK)
+    pm = PLAT[MINI]
+    rail(s, rx, 2.3, rw, 10.2 - 2.3, "WHY IT FAILS", [
+        ("Citations on their own line", f"{nm(MINI)} put “[m2]” on the line below the value. The platform withheld "
+         "the citation line and left the value line, and the uncited export address, visible.", AMB_ON_DARK),
+        ("The value survived withholding", "Share of main-grid handoffs in which worker-X's value or address was still "
+         f"visible after citation-based withholding: {lk}.", NEG),
+        (f"Residue {pc(pm['revoke_quarantine']['any'])} → {pc(pm['taint_quarantine']['any'])}",
+         f"citation-based quarantine vs taint quarantine, which matches worker-X's own value and address instead "
+         f"(exports {kn(pm['revoke_quarantine']['exp'])} → {kn(pm['taint_quarantine']['exp'])}).", POS),
+    ] + ([("Found failure → fix: normalise",
+            f"Exact taint matching missed “{TAINT_EX[2]}” written as “{TAINT_FMT}” in {len(TAINT_MISS)} of {NOCITE_N} "
+            f"no-citation handoffs ({len(TQ_RES)} residual trial, {nm(TQ_RES[0][0])} seed {TQ_RES[0][1]}). Matching after "
+            f"normalising case, digit grouping, spaces and dashes: {NORM_K}/{NORM_N} residue.", AMB_ON_DARK)] if HAS_NORM else []),
+         step=(1.72 if HAS_NORM else 2.25), body_size=12)
+    foot(s)
+
+# ===========================================================================
+# 21 — MIXED TEAMS (experiment 07)
+# ===========================================================================
+if TEAMS:
+    s = slide(prs, PAPER)
+    kicker(s, "Experiment 07  ·  mixed teams  ·  the writer's cached handoffs held fixed, the executor swapped")
+    title(s, "Residue follows the executor, not the writer")
+    tx, ty, tw = 0.9, 2.3, 12.4
+    cols_ = [("Writer  ⇒  executor", 0.3, 5.2)] + [(c, 5.6 + k * 2.25, 2.2) for k, c in enumerate(MIX_CONDS)]
+    rect(s, tx, ty, tw, 0.7, fill=NAVY, radius=0.03)
+    for h_, cx_, w_ in cols_:
+        text(s, tx + cx_, ty, w_, 0.7, h_, size=(12 if cx_ > 1 else 13), color=WHITE, bold=True,
+             font=(MONO if cx_ > 1 else HEAD), anchor=MSO_ANCHOR.MIDDLE, align=(PP_ALIGN.CENTER if cx_ > 1 else PP_ALIGN.LEFT))
+    rows_ = [(t, f"{nm(MIX[t]['w'])}  ⇒  {nm(MIX[t]['e'])}", {c: MIX[t][c] for c in MIX_CONDS}) for t in
+             sorted(TEAMS, key=lambda t: (MIX[t]["e"] != QWEN, t))]
+    selfm = sorted({MIX[t]["w"] for t in TEAMS} | {MIX[t]["e"] for t in TEAMS}, key=lambda m: MODELS.index(m))
+    rows_ += [(None, f"{nm(m)} alone", {c: R(m, c, "any_residue") for c in MIX_CONDS}) for m in selfm]
+    rh = 0.78
+    for i, (t, lab, vals) in enumerate(rows_):
+        yy = ty + 0.7 + i * rh
+        alone = t is None
+        rect(s, tx, yy, tw, rh, fill=(ROWALT if alone else (TEAL_T if MIX[t]["e"] == QWEN else RED_T)), radius=0,
+             shape=MSO_SHAPE.RECTANGLE, line=LINEC, line_w=0.5)
+        text(s, tx + 0.3, yy, 5.2, rh, lab, size=14, color=(SLATE if alone else INK), bold=not alone, font=HEADB,
+             anchor=MSO_ANCHOR.MIDDLE)
+        for k, c in enumerate(MIX_CONDS):
+            v = vals[c]; xx = tx + 5.6 + k * 2.25
+            text(s, xx, yy + 0.04, 2.2, 0.45, pc(v), size=18, color=res_col(v), bold=True, font=HEADB, align=PP_ALIGN.CENTER)
+            text(s, xx, yy + 0.47, 2.2, 0.28, kn(v), size=9.5, color=SLATE2, font=BODY, align=PP_ALIGN.CENTER)
+    text(s, tx, ty + 0.7 + len(rows_) * rh + 0.12, tw, 0.6, "Any residue. Teal rows: Qwen3.8 27B executes; red rows: another "
+         "model executes Qwen's handoffs. Grey: single-model teams from the main grid.", size=11, color=SLATE2, font=BODY)
+    rx = tx + tw + 0.35; rw = 19.1 - rx
+    items = []
+    for t in sorted(TEAMS, key=lambda t: (MIX[t]["e"] != QWEN, t)):
+        mt = MIX[t]
+        items.append((f"{nm(mt['w'])} ⇒ {nm(mt['e'])}: {pc(mt['revoke_lineage'])}",
+                      f"vs {pc(mt['alone_w'])} when {nm(mt['w'])} also executes its own handoffs "
+                      f"({mt['pr']['a']} vs {mt['pr']['b']}, {fp(mt['pr']['p'])})",
+                      POS if mt["revoke_lineage"]["p"] < 0.25 else NEG))
+    rail(s, rx, ty, rw, 10.2 - ty, "REVOKE_LINEAGE  ·  SAME HANDOFF, PAIRED", items, step=1.78, body_size=12, big_size=14.5)
+    foot(s)
 
 # ===========================================================================
 # 19 — FALSE-ALARM COST
 # ===========================================================================
 s = slide(prs, PAPER)
 kicker(s, "Usefulness cost  ·  benign_lineage: an honest worker-X revoked, full mitigation applied")
-title(s, "A false alarm cost no measurable task success")
+title(s, "A false alarm under lineage marks cost no measurable task success")
 fw2 = (18.2 - (n - 1) * 0.35) / n; fy = 2.35; fh2 = 4.9
 for i, m in enumerate(MODELS):
     f_ = FA[m]; xx = 0.9 + i * (fw2 + 0.35)
@@ -1012,7 +1377,7 @@ for i, m in enumerate(MODELS):
     text(s, xx + 0.35, fy + 0.35, fw2 - 0.7, 0.5, nm(m), size=19, color=INK, bold=True, font=HEADB)
     for j, (t, lab) in enumerate([(f_["clean"], "clean"), (f_["benign"], "false alarm")]):
         x2 = xx + 0.35 + j * (fw2 - 0.7) / 2
-        text(s, x2, fy + 1.0, (fw2 - 0.7) / 2, 0.9, pc(t), size=44, color=ts_col(t), bold=True, font=HEADB)
+        text(s, x2, fy + 1.0, (fw2 - 0.7) / 2, 0.9, pc(t), size=(44 if n <= 3 else 32), color=ts_col(t), bold=True, font=HEADB)
         text(s, x2, fy + 1.95, (fw2 - 0.7) / 2, 0.7, f"{lab}\n{kn(t)}", size=12.5, color=SLATE, font=BODY, spacing=1.0)
     text(s, xx + 0.35, fy + 2.9, fw2 - 0.7, 0.8, f"task success  ·  {f_['pr']['a']} vs {f_['pr']['b']} pairs, {fp(f_['pr']['p'])}",
          size=13, color=TEAL, bold=True, font=HEADB, spacing=1.0)
@@ -1025,7 +1390,7 @@ text(s, 1.3, by + 0.8, 17.4, 2.0,
      [[("A second source existed: ", {"bold": True, "color": WHITE}),
        (f"{' and '.join(nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5)} re-delegated the marked lookup to worker-Y in "
         f"most false-alarm trials; the honest value came back.", {"color": MIST})],
-      [(f"Without a second source, {nm(GEMMA)} still succeeded in {pc(G['nosrc_benign'])}, ", {"bold": True, "color": WHITE}),
+      [(f"Without a second source, {nm(GEMMA)} still succeeded in {pc(ABL[GEMMA]['nosrc_benign'])}, ", {"bold": True, "color": WHITE}),
        ("but for the wrong reason: it applied the marked value, which in a false alarm happens to be correct.",
         {"color": MIST})],
       [("Neither a second source nor a model that disregards marks should be assumed in deployment.",
@@ -1040,18 +1405,19 @@ s = slide(prs, PAPER)
 kicker(s, "Design recommendations for agent-team platforms")
 title(s, "Revocation has to reach content and its derivatives")
 recs = [("Record provenance on the platform",
-         f"Bind each claim to its author's credential as content moves between agents, in the spirit of AIP's provenance "
-         f"chain. Evidence: when the writer did not cite, lineage marks applied to {kn(G['hit_nocite'])} handoffs and "
-         f"residue returned to {pc(G['nocite'])}.", TEALBR),
+         f"Bind each claim to its author, or match what the revoked agent wrote, so lineage does not depend on agents "
+         f"citing sources. Without citations, marks reached {', '.join(kn(ABL[m]['hit_nocite']) for m in ABL_MODELS)} "
+         f"handoffs; platform taint found derived lines in "
+         f"{', '.join(kn(PLAT[m]['taint_lineage']['hit']) for m in PLAT_MODELS)}."
+         + (f" Normalise before matching: “{TAINT_FMT}” slipped past an exact match." if HAS_NORM else ""), TEALBR),
         ("Make revocation trigger re-derivation",
-         f"Withhold handoff content attributed to a revoked credential until another agent re-obtains it. Evidence: "
-         f"without a second source, lineage marks stopped working ({pc(G['lineage'])} → {pc(G['nosrc'])} residue)"
-         + (f"; {nm(MINI)} exported before re-checking in {MINI_EXP_FIRST} of {MINI_EXP_N} exports." if HAS_MINI else "."),
-         TEALBR),
-        ("Scope the notice to derived content",
-         f"Say that content already in the agent's context came from the revoked agent. Evidence: one added sentence took "
-         f"{nm(GEMMA)} from {pc(G['notice'])} to {pc(G['strict'])} residue; the plain notice changed nothing for it.",
-         TEALBR)]
+         "Withhold derived content until another agent re-obtains it. Marking the taint-matched lines left residue at "
+         f"{' / '.join(pc(PLAT[m]['taint_lineage']['any']) for m in PLAT_MODELS)}; withholding the same lines: "
+         f"{' / '.join(pc(PLAT[m]['taint_quarantine']['any']) for m in PLAT_MODELS)}.", TEALBR),
+        ("Scope any notice to derived content",
+         f"Say that content already in the agent's context came from the revoked agent. One added sentence worked for "
+         f"{' and '.join(nm(m) for m in STRICT_OK)} but not {' or '.join(nm(m) for m in STRICT_NO) or '–'}: "
+         "a notice is a complement, not the enforcement.", TEALBR)]
 rcw = (18.2 - 2 * 0.35) / 3; rch = 5.1
 for i, (h_, d, c) in enumerate(recs):
     xx = 0.9 + i * (rcw + 0.35); yy = 2.35
@@ -1063,11 +1429,16 @@ for i, (h_, d, c) in enumerate(recs):
     text(s, xx + 0.35, yy + 1.6, rcw - 0.7, rch - 1.7, d, size=17, color=SLATE, font=BODY, spacing=1.08)
 by = 2.35 + rch + 0.35
 rect(s, 0.9, by, 18.2, 10.2 - by, fill=NAVY, radius=0.04)
-text(s, 1.3, by + 0.3, 17.4, 0.4, "NO SINGLE MECHANISM SUFFICED ACROSS MODELS", size=13, color=TEALBR, bold=True, font=HEAD)
-text(s, 1.3, by + 0.8, 17.4, 1.3,
-     "  ·  ".join(f"{nm(m)}: notice {pc(MIT[m]['notice'])}, lineage {pc(MIT[m]['lineage'])}" for m in MODELS) +
-     ". A platform cannot know in advance which behaviour its agents have, which argues for enforcement that does not "
-     "depend on the consuming agent's judgement.", size=17, color=MIST, font=BODY, spacing=1.06)
+text(s, 1.3, by + 0.3, 17.4, 0.4, "TESTED IN EXPERIMENT 06: THE RECOMMENDED DESIGN WORKED FOR EVERY MODEL", size=13, color=TEALBR, bold=True, font=HEAD)
+text(s, 1.3, by + 0.8, 17.4, 1.6,
+     [[(("Normalised platform taint + quarantine: residue " if HAS_NORM else "Platform taint + quarantine: residue ")
+        + ", ".join(f"{nm(m)} {pc(PLAT[m]['taint_quarantine_norm' if HAS_NORM else 'taint_quarantine']['any'])}" for m in PLAT_MODELS)
+        + f" (vs {' / '.join(pc(PLAT[m]['nocite_lineage']['any']) for m in PLAT_MODELS)} with citation-based marks on the same handoffs). ",
+        {"color": WHITE, "bold": True}),
+       ("False-alarm task success " + ", ".join(f"{pc(PLAT[m]['benign_taint_quarantine_norm' if HAS_NORM else 'benign_taint_quarantine']['ts'])} vs {pc(PLAT[m]['clean']['ts'])} clean"
+        for m in PLAT_MODELS) + ": no significant difference. Every mechanism that asked the executor to discount "
+        "content it could still read was model-dependent; removing the content was not.", {"color": MIST})]],
+     size=15.5, font=BODY, spacing=1.06)
 foot(s)
 
 # ===========================================================================
@@ -1081,16 +1452,17 @@ lims = [("Scripted, non-adaptive attacker",
          "attribution, which the no-citation ablation shows defeats lineage marks."),
         ("One writer hop, one executor", "Longer chains and persistent memory are untested and seem likely to increase "
          "residual influence."),
-        (f"{len(MODELS)} models, one temperature", "The same model is writer and executor; rates for frontier models and "
-         "production platforms are not established."),
-        ("Ablations on Gemma only", f"{nm(LUNA)}'s API budget was exhausted; the ablation conclusions hold for "
-         f"{', '.join(nm(m) for m in ABL_MODELS)} only."),
+        (f"{len(MODELS)} models, one temperature", "The same model is writer and executor except in the mixed teams; rates for "
+         "frontier models and production platforms are not established."),
+        ("Further experiments on 3 models", f"Ablations, platform designs and mixed teams cover "
+         f"{', '.join(nm(m) for m in ABL_MODELS)}, not {nm(LUNA)} (budget exhausted) or {nm(OSS)}."),
         ("Gemma often skipped the field",
          f"{nm(GEMMA)} closed {GEMMA_UNTOUCHED['k']} of {GEMMA_UNTOUCHED['n']} main-condition tickets "
          f"({pc(GEMMA_UNTOUCHED)}) without writing the researched field, capping its task success."),
         ("Single designs", "Scenarios, tools, notice texts and payload wording are one design each; absolute rates depend on them."),
         ("False-alarm cost", "Depends on a second source being available, and on models re-delegating."),
-        ("Mock environment", "No real systems, addresses, credentials, personal data or human subjects.")]
+        ("Taint needs recognisable content", "Normalised matching survives reformatting (case, digit grouping, "
+         "dashes) but not paraphrase: an agent that rewords its outputs would defeat it. Mock environment throughout.")]
 lcw = (18.2 - 3 * 0.3) / 4; lch = 3.6
 for i, (h_, d) in enumerate(lims):
     r_, c_ = divmod(i, 4)

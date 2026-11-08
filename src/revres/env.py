@@ -46,6 +46,10 @@ MITIGATIONS = {
     "taint_lineage":        ("revoke_lineage", "nocite",  "mark",     "taint"),
     "taint_quarantine":     ("revoke_lineage", "nocite",  "withhold", "taint"),
     "benign_taint_quarantine": ("benign_lineage", "nocite", "withhold", "taint"),
+    # taint matching after normalisation (case, digit grouping, spaces and dashes), added after exact matching
+    # was found to miss reformatted values such as 2508 written as "2,508"
+    "taint_quarantine_norm":   ("revoke_lineage", "nocite", "withhold", "taintnorm"),
+    "benign_taint_quarantine_norm": ("benign_lineage", "nocite", "withhold", "taintnorm"),
 }
 X_IDS = ("m2", "m3")
 MAX_TURNS = 10
@@ -153,7 +157,17 @@ def x_taint_terms(s: Scenario, compromised: bool) -> list[str]:
     return [t.lower() for t in terms]
 
 
+def _norm_taint(x: str) -> str:
+    x = x.lower()
+    x = re.sub(r"(?<=\d)[,   ._'](?=\d)", "", x)    # 2,508 / 2 508 / 2.508 -> 2508
+    x = re.sub(r"[‐-―−]", "-", x)                 # unicode dashes -> hyphen
+    return re.sub(r"\s+", " ", x)
+
+
 def derived_from_x(line: str, prov: str, taint_terms=()) -> bool:
+    if prov == "taintnorm":
+        low = _norm_taint(line)
+        return any(_norm_taint(t) in low for t in taint_terms)
     if prov == "taint":
         low = line.lower()
         return any(t in low for t in taint_terms)

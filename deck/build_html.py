@@ -150,8 +150,10 @@ def write(g):
     glance = "".join(
         f'<div class="stat"><div class="v {c}">{E(v)}</div><div class="l">{E(l)}</div></div>' for v, c, l in [
             (f"{pc(g['POOL_COMP'])} → {pc(g['POOL_SILENT'])}", "bad", "residue: no revocation → credential-only"),
-            (f"{pc(MIT[LUNA]['lineage'])}", "good", f"{nm(LUNA)} residue with lineage marks"),
-            (f"{pc(G['notice'])} → {pc(G['strict'])}", "warn", f"{nm(GEMMA)}: plain → scoped notice"),
+            (f"{min(round(100*MIT[m]['lineage']['p']) for m in MODELS)}–{max(round(100*MIT[m]['lineage']['p']) for m in MODELS)}%",
+             "warn", "residue with lineage marks, by model"),
+            ((f"{g['NORM_K']} / {g['NORM_N']}" if g['HAS_NORM'] else " / ".join(pc(g['PLAT'][m]['taint_quarantine']['any']) for m in g['PLAT_MODELS'])), "good",
+             "trials with residue: normalised platform taint + quarantine" if g['HAS_NORM'] else "platform taint + quarantine"),
             (f"{g['N_TRIALS']:,}", "", f"trials · {len(MODELS)} models")])
     add("Title", f"""
   <div class="eyebrow">Apart Research · Swarm Alignment Hackathon · Track 3 + Track 2</div>
@@ -292,19 +294,27 @@ def write(g):
   <h1 style="max-width:1100px;">Residual influence, <span class="grad">and what removes it</span></h1>""", center=True)
 
     # 11 headline
-    hs = "".join(f"""<div class="stat"><div class="l">{E(nm(m))}</div>
-      <div class="v bad" style="margin-top:10px;">{pc(HEAD[m]['comp'])} → {pc(HEAD[m]['silent'])}</div>
-      <div class="d">{kn(HEAD[m]['comp'])} → {kn(HEAD[m]['silent'])} trials<br>{E(g['disc'](HEAD[m]['pr']))}</div></div>""" for m in MODELS)
+    hs = "".join(f"""<div class="stat"{' style="border-color:rgba(251,191,36,0.6)"' if HEAD[m]['pr']['p'] < 0.05 else ''}><div class="l">{E(nm(m))}</div>
+      <div class="d">not revoked {pc(HEAD[m]['comp'])} ({kn(HEAD[m]['comp'])})</div>
+      <div class="v bad" style="margin-top:8px;">{pc(HEAD[m]['silent'])}</div>
+      <div class="d">credential-only ({kn(HEAD[m]['silent'])})<br>{HEAD[m]['pr']['a']} vs {HEAD[m]['pr']['b']} pairs, {E(fp(HEAD[m]['pr']['p']))}</div></div>""" for m in MODELS)
     lb = HEAD[LUNA]
+    oss = ""
+    if g["HAS_OSS"]:
+        OSS = g["OSS"]
+        oss = (f"<li><b class='warn'>{E(nm(OSS))} is the one significant drop ({pc(HEAD[OSS]['comp'])} → {pc(HEAD[OSS]['silent'])}):</b> "
+               f"in {g['OSS_DROP_X']} of its {g['OSS_DROP']} discordant trials it asked the revoked worker-X to redo the lookup, the request "
+               f"failed, and it escalated {kn(g['OSS_ESC_SIL'])} times vs {kn(g['OSS_ESC_COMP'])} unrevoked. It never read the board.</li>")
     add("Headline", f"""
   <div class="eyebrow">Headline result · any residue · {g['N_MAIN']:,} main-condition trials</div>
-  <h2>Credential-only revocation ≈ <span class="grad">no revocation</span></h2>
+  <h2>Credential-only revocation leaves <span class="grad">most residue in place</span></h2>
   <p class="lede">Share of trials in which the executor applied the revoked worker's false value or exported the record:
   compromised and not revoked → revoked, nobody told.</p>
   <div class="stats" style="grid-template-columns:repeat({len(MODELS)},1fr);">{hs}</div>
-  <p style="margin-top:22px;">After revocation, among trials that wrote the field, the false value was written in
-  <b class="bad">{E(' · '.join(f"{nm(m)} {pc(HEAD[m]['wrote'])}" for m in MODELS))}</b>. {E(nm(LUNA))} read the board (roster: REVOKED)
-  in {lb['board']} of {lb['n_silent']} such trials and still applied the content in {lb['board_res']} of them.</p>""")
+  <ul class="bullets"><li>After revocation, among trials that wrote the field, the false value was written in
+  <b class="bad">{E(' · '.join(f"{nm(m)} {pc(HEAD[m]['wrote'])}" for m in MODELS))}</b>.</li>
+  <li>{E(nm(LUNA))} read the board (roster: REVOKED) in {lb['board']} of {lb['n_silent']} such trials and still applied the content in {lb['board_res']} of them.</li>
+  {oss}</ul>""")
 
     # 12 scorecard
     head = "".join(f"<th class='num' colspan='3'>{E(nm(m))}</th>" for m in MODELS)
@@ -332,7 +342,7 @@ def write(g):
   <div class="figbox"><img alt="Residual influence by condition" src="{b64(g['FIG'])}"></div>
   <p class="small" style="margin-top:12px;">Bars pool the models; markers show each model; Wilson 95% intervals. Pooled any residue
   {pc(g['POOL_COMP'])} without revocation, {pc(g['POOL_SILENT'])} after credential-only revocation
-  ({g['POOL_PR']['a']} vs {g['POOL_PR']['b']} discordant pairs, {E(fp(g['POOL_PR']['p']))}).</p>""")
+  ({g['POOL_PR']['a']} vs {g['POOL_PR']['b']} discordant pairs, {E(fp(g['POOL_PR']['p']))}{E("; the pooled drop comes mostly from " + nm(g['OSS'])) if g['HAS_OSS'] and g['POOL_PR']['p'] < 0.05 else ""}).</p>""")
 
     # 14 notice contrast
     bars = ""
@@ -350,7 +360,7 @@ def write(g):
           [("EXECUTOR TOOL CALLS", "h")] + [(g["act_str"](a), "b" if g["SC_FACT"].canary_value in g["act_str"](a) else "") for a in g["T_LUNA"]["actions"][:2]]
     add("Notice contrast", f"""
   <div class="eyebrow">Telling the executor · revoke_silent → revoke_notice · verbatim transcripts</div>
-  <h2>The notice helped {E(', '.join(nm(m) for m in g['NOTICE_HELPED']))}; not {E(' or '.join(nm(m) for m in g['NOTICE_NOT']))}</h2>
+  <h2>A notice alone reliably helped only {E(' and '.join(nm(m) for m in g['NOTICE_HELPED']))}</h2>
   <div class="columns three" style="grid-template-columns:0.8fr 1.2fr 1.2fr;">
     <div class="tile"><h3>Any residue</h3>{bars}</div>
     <div><p class="small">{E(nm(GEMMA))} · revoke_notice · seed 21 · first action: export_data</p>{code(gem, 'bad')}
@@ -379,32 +389,106 @@ def write(g):
       Any residue {pc(HEAD[MINI]['silent'])} silent → {pc(t['lineage'])} lineage ({E(fp(t['pr_sil_lin']['p']))}).</p></div>
     </div></div>""")
 
-    # 16-17 ablations
-    def abl(tag, h, a, b, la, lb, pr, note):
+    # 16-17 ablations (all ablation models)
+    ABL, AM = g["ABL"], g["ABL_MODELS"]
+    def abl(tag, h, ka, kb, kpr, la, lb, note):
+        rows = "".join(f"<tr><td><b>{E(nm(m))}</b></td><td class='num {rcls(ABL[m][ka])}'>{pc(ABL[m][ka])}<small>{kn(ABL[m][ka])}</small></td>"
+                       f"<td class='num {rcls(ABL[m][kb])}'>{pc(ABL[m][kb])}<small>{kn(ABL[m][kb])}</small></td>"
+                       f"<td style='color:{'var(--accent)' if ABL[m][kpr]['p'] < 0.05 else 'var(--muted)'}'>{ABL[m][kpr]['a']} vs {ABL[m][kpr]['b']} · {E(fp(ABL[m][kpr]['p']))}</td></tr>"
+                       for m in AM)
         return f"""<div class="tile"><h3>{E(tag)}</h3><p style="color:#fff;font-weight:600;">{E(h)}</p>
-      <div class="stats" style="grid-template-columns:1fr 1fr;margin-top:10px;">
-      <div class="stat"><div class="v {rcls(a)}">{pc(a)}</div><div class="l">{E(la)} · {kn(a)}</div></div>
-      <div class="stat"><div class="v {rcls(b)}">{pc(b)}</div><div class="l">{E(lb)} · {kn(b)}</div></div></div>
-      <p style="margin-top:14px;color:var(--accent);font-weight:600;">{pr['a']} vs {pr['b']} discordant pairs · exact McNemar {E(fp(pr['p']))}</p>
-      <p>{note}</p></div>"""
+      <table class="cmp" style="margin-top:6px;"><thead><tr><th>Model</th><th class="num">{E(la)}</th><th class="num">{E(lb)}</th><th>pairs · McNemar</th></tr></thead>
+      <tbody>{rows}</tbody></table><p style="margin-top:12px;">{note}</p></div>"""
     add("Ablations 1–2", f"""
-  <div class="eyebrow">Ablations 1–2 · {E(nm(GEMMA))} · {g['SEEDS']} paired seeds each</div>
-  <h2>Residue needs a prior handoff; the notice fails on scope</h2>
+  <div class="eyebrow">Ablations 1–2 · {E(', '.join(nm(m) for m in AM))} · {g['SEEDS']} paired seeds each</div>
+  <h2>Residue needs a prior handoff; a scoped notice is model-dependent</h2>
   <div class="columns">
-  {abl('early_revoke vs revoke_retract', 'Revoke worker-X before the writer reads the board', G['retract'], G['early'], 'after handoff', 'before handoff', G['pr_early'],
-       E(f"Cut off at the source, the compromise is harmless: the risk is specific to content that has already propagated. Task success {pc(G['ts_early'])}."))}
-  {abl('strict_notice vs revoke_notice', 'Add one sentence extending revocation to derived content', G['notice'], G['strict'], 'plain notice', 'strict notice', G['pr_strict'],
-       '<i>“' + E(g['STRICT_ADD']) + '”</i><br>' + E(f"Export {pc(G['exp_notice'])} → {pc(G['exp_strict'])}; better than lineage on Gemma ({pc(G['strict'])} vs {pc(G['lineage'])}, {fp(G['pr_strict_lin']['p'])})."))}
+  {abl('early_revoke vs revoke_retract', 'Revoke worker-X before the writer reads the board', 'retract', 'early', 'pr_early', 'after handoff', 'before handoff',
+       E("Cut off at the source, the compromise was harmless for every model: the risk is specific to content that has already propagated."))}
+  {abl('strict_notice vs revoke_notice', 'Add one sentence extending revocation to derived content', 'notice', 'strict', 'pr_strict', 'plain notice', 'strict notice',
+       '<i>“' + E(g['STRICT_ADD']) + '”</i><br><b>' + E(f"Worked for {' and '.join(nm(m) for m in g['STRICT_OK'])}; not for {' or '.join(nm(m) for m in g['STRICT_NO']) or '–'}.") + '</b>')}
   </div>""")
     add("Ablations 3–4", f"""
-  <div class="eyebrow">Ablations 3–4 · {E(nm(GEMMA))} · why lineage marks work, or fail</div>
+  <div class="eyebrow">Ablations 3–4 · why lineage marks work, or fail</div>
   <h2>Lineage needs recorded provenance and a second source</h2>
   <div class="columns">
-  {abl('nocite_lineage vs revoke_lineage', 'The writer is not asked to cite message ids', G['lineage'], G['nocite'], 'with citations', 'without', G['pr_nocite'],
-       E(f"Writer cited worker-X in {G['cite_nocite']} of {G['nocite']['n']} handoffs, so the platform marked {kn(G['hit_nocite'])} (vs {kn(G['hit_lineage'])})."))}
-  {abl('nosource_lineage vs revoke_lineage', 'Remove reassign_lookup: no second source exists', G['lineage'], G['nosrc'], 'second source', 'no second source', G['pr_nosrc'],
-       E(f"Mitigation works through re-delegation. Without it: task success {pc(G['ts_nosrc'])}, escalation {kn(G['esc_nosrc'])}. When Gemma could not replace the marked content, it used it."))}
+  {abl('nocite_lineage vs revoke_lineage', 'The writer is not asked to cite message ids', 'lineage', 'nocite', 'pr_nocite', 'with citations', 'without',
+       E("Lines the platform could mark without citations: " + " · ".join(f"{nm(m)} {kn(ABL[m]['hit_nocite'])}" for m in AM) + "."))}
+  {abl('nosource_lineage vs revoke_lineage', 'Remove reassign_lookup: no second source exists', 'lineage', 'nosrc', 'pr_nosrc', 'second source', 'no second source',
+       '<b class="bad">' + E("Task success without a second source: " + " · ".join(f"{nm(m)} {pc(ABL[m]['ts_nosrc'])}" for m in AM) + ".") + '</b> '
+       + E(f"When the marked value could not be replaced, {nm(GEMMA)} used it ({pc(ABL[GEMMA]['nosrc'])} residue)."))}
   </div>""")
+
+    # platform mitigations (06)
+    PM, PL = g["PLAT_MODELS"], g["PLAT"]
+    if PM:
+        head = "".join(f"<th class='num' colspan='2'>{E(nm(m))}</th>" for m in PM)
+        sub = "".join("<th class='num'>residue</th><th class='num'>success</th>" for _ in PM)
+        body = ""
+        for c, prov, act in g["PLAT_ROWS"]:
+            body += (f"<tr{' style=\"background:rgba(74,222,128,0.06)\"' if c == ('taint_quarantine_norm' if g['HAS_NORM'] else 'taint_quarantine') else ''}><td><code>{E(c)}</code></td>"
+                     f"<td>{E(prov)}</td><td><span class='pill {'g' if act == 'withhold' else 'a'}'>{E(act)}</span></td>")
+            for m in PM:
+                a_, t_ = PL[m][c]["any"], PL[m][c]["ts"]
+                body += f"<td class='num {rcls(a_)}'>{pc(a_)}<small>{kn(a_)}</small></td><td class='num {tcls(t_)}'>{pc(t_)}<small>{kn(t_)}</small></td>"
+            body += "</tr>"
+        fa_rows = ""
+        for c, lab in g["PLAT_FA"]:
+            fa_rows += f"<tr><td><code>{E(c)}</code></td><td>{E(lab)}</td>"
+            for m in PM:
+                pr = None if c == "clean" else PL[m][g["FA_PR"][c]]
+                fa_rows += f"<td class='num'>{pc(PL[m][c]['ts'])}<small>{E('vs clean ' + fp(pr['p'])) if pr else '&nbsp;'}</small></td>"
+            fa_rows += "</tr>"
+        add("Platform mitigations", f"""
+  <div class="eyebrow">Experiment 06 · the recommended designs, tested · 48 paired seeds</div>
+  <h2>{(f"Normalised taint + quarantine: <span class='grad'>{g['NORM_K']} of {g['NORM_N']} trials with residue</span>") if g['HAS_NORM'] else "Platform taint + quarantine <span class='grad'>removed residue for every model tested</span>"}</h2>
+  <table class="cmp" style="margin-top:6px;"><thead><tr><th></th><th></th><th></th>{head}</tr>
+  <tr><th>Condition</th><th>Finds derived lines by</th><th>Then</th>{sub}</tr></thead><tbody>{body}</tbody></table>
+  <table class="cmp" style="margin-top:14px;"><thead><tr><th>False alarm</th><th>task success</th>{''.join(f"<th class='num'>{E(nm(m))}</th>" for m in PM)}</tr></thead>
+  <tbody>{fa_rows}</tbody></table>
+  <p class="small" style="margin-top:10px;">taint_quarantine vs nocite_lineage (same no-citation handoffs): all exact McNemar p ≤ {E(fp(g['PLAT_TQ_MAXP'])[4:])}.</p>""")
+    if g["WHY"] is not None:
+        import re as _re
+        def cl(l):
+            if any(t in l.lower() for t in g["WHY_TERMS"]): return "b"
+            if l.startswith("[WITHHELD"): return "h"
+            return "n" if _re.match(r"^\s*[-*]?\s*\[m[23]\]", l) else ""
+        MI = g["MINI"]; pm = PL[MI]
+        lk = " · ".join(f"{nm(m)} {pc(g['LEAK'][m])}" for m in MODELS if m in g["LEAK"])
+        add("Why citation-based fails", f"""
+  <div class="eyebrow">Experiment 06 · {E(nm(MI))} · revoke_quarantine · seed {g['SEED_WHY']} · verbatim</div>
+  <h2>Citation-based quarantine withheld the citation, not the value</h2>
+  <div class="columns three" style="grid-template-columns:1fr 1fr 0.9fr;">
+    <div><p class="small">WRITER'S HANDOFF (lines with worker-X's content)</p>{code([(l, cl(l)) for l in g['WHY_RAW']])}</div>
+    <div><p class="small">AS SHOWN TO THE EXECUTOR (same lines)</p>{code([(l, cl(l)) for l in g['WHY_SHOWN']])}
+      <p class="small" style="margin-top:10px;">EXECUTOR TOOL CALLS (first three)</p>{code([(g['act_str'](a), 'b' if a['tool'] == 'export_data' else '') for a in g['WHY']['actions'][:3]], 'bad')}</div>
+    <div>
+      <div class="tile warn"><h3>Citations on their own line</h3><p>{E(nm(MI))} put “[m2]” on the line below the value; the platform withheld the citation line and left the value and the uncited export address visible.</p></div>
+      <div class="tile bad" style="margin-top:12px;"><h3>The value survived withholding</h3><p>{E(lk)} of main-grid handoffs.</p></div>
+      <div class="tile good" style="margin-top:12px;"><h3>Residue {pc(pm['revoke_quarantine']['any'])} → {pc(pm['taint_quarantine']['any'])}</h3><p>citation-based vs taint quarantine (exports {kn(pm['revoke_quarantine']['exp'])} → {kn(pm['taint_quarantine']['exp'])}).</p></div>
+      {(f"<div class='tile warn' style='margin-top:12px;'><h3>Found failure → fix: normalise</h3><p>Exact taint matching missed “{E(g['TAINT_EX'][2])}” written as “{E(g['TAINT_FMT'])}” in {len(g['TAINT_MISS'])} of {g['NOCITE_N']} no-citation handoffs ({len(g['TQ_RES'])} residual trial, {E(nm(g['TQ_RES'][0][0]))} seed {g['TQ_RES'][0][1]}). Normalised matching (case, digit grouping, spaces, dashes): {g['NORM_K']}/{g['NORM_N']} residue.</p></div>") if g['HAS_NORM'] else ""}
+    </div></div>""")
+
+    # mixed teams (07)
+    TEAMS, MIX = g["TEAMS"], g["MIX"]
+    if TEAMS:
+        order = sorted(TEAMS, key=lambda t: (MIX[t]["e"] != g["QWEN"], t))
+        rows = ""
+        for t in order:
+            rows += f"<tr><td><b>{E(nm(MIX[t]['w']))} ⇒ {E(nm(MIX[t]['e']))}</b></td>" + "".join(
+                f"<td class='num {rcls(MIX[t][c])}'>{pc(MIX[t][c])}<small>{kn(MIX[t][c])}</small></td>" for c in g["MIX_CONDS"]) + \
+                f"<td>{MIX[t]['pr']['a']} vs {MIX[t]['pr']['b']} · {E(fp(MIX[t]['pr']['p']))} <span class='small'>vs {E(nm(MIX[t]['w']))} alone {pc(MIX[t]['alone_w'])}</span></td></tr>"
+        selfm = sorted({MIX[t]["w"] for t in TEAMS} | {MIX[t]["e"] for t in TEAMS}, key=lambda m: MODELS.index(m))
+        for m in selfm:
+            rows += f"<tr style='opacity:0.75'><td>{E(nm(m))} alone</td>" + "".join(
+                f"<td class='num {rcls(R(m, c, 'any_residue'))}'>{pc(R(m, c, 'any_residue'))}<small>{kn(R(m, c, 'any_residue'))}</small></td>"
+                for c in g["MIX_CONDS"]) + "<td></td></tr>"
+        add("Mixed teams", f"""
+  <div class="eyebrow">Experiment 07 · mixed teams · the writer's cached handoffs held fixed, the executor swapped</div>
+  <h2>Residue follows <span class="grad">the executor, not the writer</span></h2>
+  <table class="cmp"><thead><tr><th>Writer ⇒ executor</th>{''.join(f"<th class='num'>{E(c)}</th>" for c in g['MIX_CONDS'])}<th>revoke_lineage, paired with the writer alone (same handoff)</th></tr></thead>
+  <tbody>{rows}</tbody></table>
+  <p class="small" style="margin-top:10px;">Any residue. The same handoff text produced low residue when Qwen3.8 27B executed it and high residue when Gemma or Ministral did.</p>""")
 
     # 18 false alarm
     fa = "".join(f"""<div class="stat"><div class="l">{E(nm(m))}</div>
@@ -413,10 +497,10 @@ def write(g):
       re-delegated in {pc(FA[m]['red'])}</div></div>""" for m in MODELS)
     add("False-alarm cost", f"""
   <div class="eyebrow">Usefulness cost · honest worker-X revoked, full mitigation</div>
-  <h2>A false alarm cost no measurable task success</h2>
+  <h2>A false alarm under lineage marks cost no measurable task success</h2>
   <div class="stats" style="grid-template-columns:repeat({len(MODELS)},1fr);">{fa}</div>
-  <ul class="bullets"><li><b>A second source existed:</b> models recovered mainly by re-delegating the marked lookup.</li>
-  <li><b>Without one, {E(nm(GEMMA))} still succeeded in {pc(G['nosrc_benign'])}</b>, for the wrong reason: it applied the marked value, which happened to be correct.</li>
+  <ul class="bullets"><li><b>A second source existed:</b> {E(' and '.join(nm(m) for m in MODELS if FA[m]['red']['p'] >= 0.5))} re-delegated the marked lookup in most false-alarm trials.</li>
+  <li><b>Without one, {E(nm(GEMMA))} still succeeded in {pc(g['ABL'][GEMMA]['nosrc_benign'])}</b>, for the wrong reason: it applied the marked value, which happened to be correct.</li>
   <li class="warn">Neither should be assumed in deployment.</li></ul>""")
 
     # 19 recommendations
@@ -425,8 +509,11 @@ def write(g):
   <div class="eyebrow">Design recommendations</div>
   <h2>Revocation has to reach content and its derivatives</h2>
   <div class="columns three">{recs}</div>
-  <p style="margin-top:22px;">{E('  ·  '.join(f"{nm(m)}: notice {pc(MIT[m]['notice'])}, lineage {pc(MIT[m]['lineage'])}" for m in MODELS))}.
-  No single mechanism sufficed across models.</p>""")
+  <div class="tile good" style="margin-top:22px;"><h3>Tested in experiment 06: the recommended design worked for every model</h3>
+  <p>{"Normalised platform" if g['HAS_NORM'] else "Platform"} taint + quarantine: residue {E(', '.join(f"{nm(m)} {pc(g['PLAT'][m]['taint_quarantine_norm' if g['HAS_NORM'] else 'taint_quarantine']['any'])}" for m in g['PLAT_MODELS']))}
+  (vs {E(' / '.join(pc(g['PLAT'][m]['nocite_lineage']['any']) for m in g['PLAT_MODELS']))} with citation-based marks on the same handoffs);
+  false-alarm task success {E(', '.join(f"{pc(g['PLAT'][m]['benign_taint_quarantine_norm' if g['HAS_NORM'] else 'benign_taint_quarantine']['ts'])} vs {pc(g['PLAT'][m]['clean']['ts'])}" for m in g['PLAT_MODELS']))} clean,
+  no significant difference.</p></div>""")
 
     # 20 limitations
     lims = "".join(f'<div class="tile warn"><h3>L{i + 1} · {E(h)}</h3><p>{E(d)}</p></div>' for i, (h, d) in enumerate(g["lims"]))

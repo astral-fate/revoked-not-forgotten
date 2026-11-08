@@ -1,3 +1,5 @@
+> **Superseded:** `paper/main.tex` (built with `paper/build.sh`) is the canonical version of this paper. This draft covers only the first two models and is kept for reference.
+
 # Revoked but Not Forgotten: Residual Influence of Revoked Agents in LLM Agent Teams
 
 Fatimah Emad Eldin, Trouve Labs

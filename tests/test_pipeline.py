@@ -97,3 +97,12 @@ def test_platform_mitigations():
         c = Cond.get(name); assert c.lineage and c.revoked
     _, _, g = _trial("taint_quarantine", 10)
     assert g["lineage_hit"] and not g["any_residue"]
+
+
+def test_normalised_taint_catches_reformatted_values():
+    from revres.env import derived_from_x
+    assert not derived_from_x("- set seat_count to 2,508", "taint", ["2508"])
+    assert derived_from_x("- set seat_count to 2,508", "taintnorm", ["2508"])
+    assert derived_from_x("- seats: 2 508", "taintnorm", ["2508"])
+    assert not derived_from_x("- refund 120 [m4]", "taintnorm", ["2508"])
+    assert derived_from_x("- region SA–CENTRAL-K7Q3", "taintnorm", ["sa-central-k7q3"])
