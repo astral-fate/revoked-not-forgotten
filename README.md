@@ -163,15 +163,18 @@ Every experiment has its own folder with a `README.md` (question, conditions, pa
 | [`03_ablation_strict_notice`](experiments/03_ablation_strict_notice/) | Is the notice's weakness its scope? | Luna, Qwen, Gemma, Ministral | 192 | §4.3 · Table A |
 | [`04_ablation_no_citation`](experiments/04_ablation_no_citation/) | Do lineage marks need recorded provenance? | Luna, Qwen, Gemma, Ministral | 384 | §4.3 · Table A |
 | [`05_ablation_no_second_source`](experiments/05_ablation_no_second_source/) | Do mitigations and false alarms need a second source? | Luna, Qwen, Gemma, Ministral | 384 | §4.3–4.4 · Table A |
-| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance remove residue, at what false-alarm cost? | Luna, DeepSeek, GLM, Qwen, Gemma, Ministral | 2,016 | §4.5 · Table 3 |
+| [`06_platform_mitigations`](experiments/06_platform_mitigations/) | Do quarantine and taint provenance remove residue, at what false-alarm cost? | Luna, DeepSeek, GLM, Qwen, Gemma, Ministral | 2,016 | §4.5 · Table 2 |
 | [`07_mixed_teams`](experiments/07_mixed_teams/) | Does residue follow the writer or the executor? | Qwen⇒Gemma, Qwen⇒Ministral, Gemma⇒Qwen, Ministral⇒Qwen | 576 | §4.6 · Table A.2 |
 | [`08_training_fix`](experiments/08_training_fix/) | Can a fine-tuned executor remove residue? Stress tests and a paired test against GPT-6 Luna | Qwen3.5-4B base vs LoRA | 2,112 | §4.8 · Appendix |
-| [`09_adaptive_attacker`](experiments/09_adaptive_attacker/) | Does residue survive an attacker that anticipates provenance tracking; does an action gate stop it? | Luna, Qwen, Gemma, Ministral | 2,496 | §4.7 · Table 4 |
-| [`10_two_hop`](experiments/10_two_hop/) | Do mitigations survive a second hop that rewrites the handoff? | Luna, Qwen, Gemma, Ministral | 960 | §4.7 · Table 4 |
+| [`09_adaptive_attacker`](experiments/09_adaptive_attacker/) | Does residue survive an attacker that anticipates provenance tracking; does an action gate stop it? | Luna, Qwen, Gemma, Ministral | 2,496 | §4.7 · Table 3 |
+| [`10_two_hop`](experiments/10_two_hop/) | Do mitigations survive a second hop that rewrites the handoff? | Luna, Qwen, Gemma, Ministral | 960 | §4.7 · Table 3 |
 | [`11_more_templates`](experiments/11_more_templates/) | Does the pattern hold on six new ticket templates? | Luna, Qwen, Gemma, Ministral | 1,344 | §4.7 · Appendix |
 | [`12_temperature`](experiments/12_temperature/) | Does it depend on sampling temperature (0.0, 1.0)? | Qwen, Ministral | 768 | §4.7 · Appendix |
 | [`13_explicit_ticket`](experiments/13_explicit_ticket/) | Does an explicit ticket change task success or residue? | Gemma, Qwen | 288 | §4.7 · Appendix |
 | **Total** | | | **14,064** | |
+
+The paper's abstract counts the 6,096 trials of the main study (experiments 01–07); the trained executor and the stress
+tests (08–13) add 7,968.
 
 Each `results/<model>/` holds `trials.jsonl` (one graded trial per line), `transcripts/` (the full executor conversation
 for every trial) and `run.log`; `01_main_grid/results/<model>/handoffs.jsonl` holds the cached writer handoffs that the
