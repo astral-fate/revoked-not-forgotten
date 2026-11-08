@@ -590,8 +590,8 @@ def main():
             s1, s2 = M[f"mcsig/{a_}/{b1}/{mname}"], M[f"mcsig/{a_}/{b2}/{mname}"]
             M[f"mcsigpair/{a_}/{b1}/{b2}/{mname}"] = (
                 "was not significant for any model under either design" if s1 == "none" and s2 == "none" else
-                "was significant for " + (s1 if s1 != "none" else "no model") + " under the first design and for "
-                + (s2 if s2 != "none" else "no model") + " under the second")
+                "was significant for " + (s1 if s1 != "none" else "no model") + " under taint quarantine and for "
+                + (s2 if s2 != "none" else "no model") + " under citation-based quarantine")
     # template-clustered robustness check for the confirmatory contrasts (12 template x payload cells per model)
     clus = {}
     fields = {x: y for x, y, _ in PAIR_METRICS}
@@ -607,23 +607,25 @@ def main():
         M["clus/holmsig/word"] = NUMWORD.get(len(holm_sig), str(len(holm_sig)))
         M["clus/both"] = len(both)
         M["clus/both/word"] = NUMWORD.get(len(both), str(len(both)))
+        M["clus/both/Word"] = NUMWORD.get(len(both), str(len(both))).capitalize()
         M["clus/ciexcl"] = len(ci_ex)
         M["clus/ciexcl/word"] = NUMWORD.get(len(ci_ex), str(len(ci_ex)))
         M["clus/lost"] = join_list(short(k[0]) + " " + tex(k[1]) + " $\\to$ " + tex(k[2]) for k in holm_sig if k not in both)
         cm = [m for m in models if any(k[0] == slug[m] for k in clus)]
-        t = ["\\begin{tabular}{@{}l" + "c" * len(cm) + "@{}}", "\\toprule",
-             "A $\\to$ B (metric) & " + " & ".join(name[m] for m in cm) + " \\\\", "\\midrule"]
-        for a_, b_, mn in CONFIRM:
-            vals = []
-            for m in cm:
+        t = ["\\begin{tabular}{@{}llrcrr@{}}", "\\toprule",
+             "Model & A $\\to$ B (metric) & Cells & Mean $\\Delta$ [95\\% CI] & Sign $p$ & Holm $p$ (seeds) \\\\",
+             "\\midrule"]
+        for i, m in enumerate(cm):
+            if i:
+                t.append("\\addlinespace[2pt]")
+            for a_, b_, mn in CONFIRM:
                 v = clus.get((slug[m], a_, b_, mn))
                 if not v:
-                    vals.append("--")
                     continue
                 q = padj.get((slug[m], a_, b_, mn))
-                vals.append(f"{fmt_pp(v['mean'])} [{fmt_pp(v['lo'])}, {fmt_pp(v['hi'])}]; {v['pos']}/{v['neg']}, "
-                            f"{fmt_p(v['p'])}; " + (fmt_p(q) if q is not None else "--"))
-            t.append(f"{tex(a_)} $\\to$ {tex(b_)} ({'task' if mn == 'task' else 'residue'}) & " + " & ".join(vals) + " \\\\")
+                t.append(f"{short(slug[m])} & {tex(a_)} $\\to$ {tex(b_)} ({'task' if mn == 'task' else 'residue'}) & "
+                         f"{v['pos']}+/{v['neg']}$-$ of {v['n']} & {fmt_pp(v['mean'])} [{fmt_pp(v['lo'])}, {fmt_pp(v['hi'])}] & "
+                         f"{fmt_p(v['p'])} & " + (fmt_p(q) if q is not None else "--") + " \\\\")
         t += ["\\bottomrule", "\\end{tabular}"]
         (OUT / "tab_cluster.tex").write_text("\n".join(t) + "\n", encoding="utf-8")
         M["have/cluster"] = 1
