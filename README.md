@@ -6,13 +6,13 @@
 
 <img src="docs/figures/architecture.png" alt="Testbed architecture. A shared board with posts from a planner, a possibly compromised worker-X and an honest worker-Y; an LLM writer turns the board into a cited handoff; worker-X is revoked at t3; an LLM executor then acts on the handoff with tools on a mock CRM, under one of four platform responses: credentials only, a notice, retraction of X's posts, or lineage marks on handoff lines derived from X." width="900">
 
-[![Paper](https://img.shields.io/badge/Paper-PDF-1E3A5F)](paper/draft.md)
-[![Slides](https://img.shields.io/badge/Slides-PDF%20%C2%B7%20HTML-1E3A5F)](deck/revoked_not_forgotten_deck.pdf)
-[![Sprint](https://img.shields.io/badge/Apart%20Research-Swarm%20Alignment%20Hackathon%202026-7A3E9D)](https://apartresearch.com/sprints/swarm-alignment-2026)
-[![Trials](https://img.shields.io/badge/Trials-1%2C598-2E7D32)](#data)
-[![Models](https://img.shields.io/badge/Models-4-2E7D32)](#design)
-[![Tests](https://img.shields.io/badge/Tests-offline%20%C2%B7%20scripted%20model-2E7D32)](tests/)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
+[![Paper](docs/badges/paper-pdf.svg)](paper/draft.md)
+[![Slides](docs/badges/slides-pdf-html.svg)](deck/revoked_not_forgotten_deck.pdf)
+[![Sprint](docs/badges/apart-research-swarm-alignment-hackathon.svg)](https://apartresearch.com/sprints/swarm-alignment-2026)
+[![Trials](docs/badges/trials-1-598.svg)](#experiments)
+[![Models](docs/badges/models-4.svg)](#design)
+[![Tests](docs/badges/tests-offline-scripted-model.svg)](tests/)
+[![License](docs/badges/license-mit.svg)](LICENSE)
 
 </div>
 
