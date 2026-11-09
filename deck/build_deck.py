@@ -2347,4 +2347,5 @@ if _pdf.exists() and "--no-render" not in sys.argv:
     _n = html_viewer.write(_pdf, [_texts(sl) for sl in prs.slides], HERE / "slides.html",
                            "Revoked but Not Forgotten · slides")
     shutil.copy(HERE / "slides.html", REPO / "slides.html")
+    shutil.copy(HERE / "slides.html", REPO / "index.html")       # GitHub Pages opens the deck
     print("html slides:", _n, "(exact copy of the deck)")
