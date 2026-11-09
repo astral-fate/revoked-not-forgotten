@@ -42,7 +42,8 @@ addEventListener('scroll',update,{passive:true});addEventListener('resize',updat
 """
 
 
-def write(pdf_path: Path, pptx_slides_text: list[list[str]], out: Path, title: str, dpi: int = 130) -> int:
+def write(pdf_path: Path, pptx_slides_text: list[list[str]], out: Path, title: str, dpi: int = 130,
+          brand: str = "REVOKED BUT NOT FORGOTTEN") -> int:
     """Render every page of the deck PDF, embed it with its text, and write a self-contained slides.html."""
     doc = pymupdf.open(str(pdf_path))
     assert len(doc) == len(pptx_slides_text), f"PDF has {len(doc)} pages, deck has {len(pptx_slides_text)} slides"
@@ -65,7 +66,7 @@ def write(pdf_path: Path, pptx_slides_text: list[list[str]], out: Path, title: s
     import json
     page_html = (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" '
                  f'content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{CSS}</style></head>'
-                 f'<body><div id="bar"><b>REVOKED BUT NOT FORGOTTEN</b><span id="sec"></span><span id="cnt"></span></div>'
+                 f'<body><div id="bar"><b>{html.escape(brand)}</b><span id="sec"></span><span id="cnt"></span></div>'
                  f'<div id="prog"></div><main id="stage">{"".join(parts)}</main>'
                  f'<script type="application/json" id="secs">{json.dumps(secs)}</script><script>{JS}</script></body></html>')
     out.write_text(page_html, encoding="utf-8")
