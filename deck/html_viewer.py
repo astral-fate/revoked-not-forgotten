@@ -1,8 +1,8 @@
 """slides.html: an exact HTML copy of the PowerPoint deck.
 
 Each slide is the deck's own rendering (LibreOffice PDF -> image), so the HTML can never drift from the PPTX.
-The slide text is embedded alongside each image for search and screen readers. Navigation: arrow keys, space,
-click (right half forward, left half back), Home/End, F for fullscreen, #N in the URL opens slide N.
+The slide text is embedded alongside each image for search and screen readers.
+One scrolling page: all slides top to bottom; a sticky bar shows the section and slide number; #N links to slide N.
 """
 from __future__ import annotations
 
@@ -16,36 +16,29 @@ from PIL import Image
 
 CSS = """
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#0b1520;color:#cfe3e8;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
-#stage{position:fixed;inset:0 0 44px 0;display:flex;align-items:center;justify-content:center;padding:12px}
-#stage img{max-width:100%;max-height:100%;box-shadow:0 10px 40px rgba(0,0,0,.5);border-radius:4px;user-select:none}
-.slide{display:none}.slide.on{display:contents}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-#bar{position:fixed;left:0;right:0;bottom:0;height:44px;display:flex;align-items:center;gap:16px;padding:0 18px;
-     background:#1b2a3a;border-top:1px solid #2e4053;font-size:13px}
-#bar b{color:#14b8a6;letter-spacing:.08em;font-weight:600}
+html{scroll-behavior:smooth;scroll-padding-top:56px}
+body{background:#0b1520;color:#cfe3e8;font-family:'Segoe UI',system-ui,sans-serif}
+#bar{position:sticky;top:0;z-index:5;height:44px;display:flex;align-items:center;gap:16px;padding:0 18px;
+     background:rgba(27,42,58,.96);border-bottom:1px solid #2e4053;font-size:13px;backdrop-filter:blur(6px)}
+#bar b{color:#14b8a6;letter-spacing:.08em;font-weight:600;white-space:nowrap}
 #sec{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#prog{position:fixed;left:0;bottom:44px;height:3px;background:#14b8a6;transition:width .2s}
-button{background:#223345;color:#cfe3e8;border:1px solid #2e4053;border-radius:6px;padding:5px 11px;cursor:pointer;font:inherit}
-button:hover{background:#2e4053}
-@media (max-width:700px){#sec{display:none}}
+#cnt{white-space:nowrap;font-variant-numeric:tabular-nums}
+#prog{position:sticky;top:44px;z-index:5;height:3px;background:#14b8a6;width:0;transition:width .15s}
+#stage{width:100%;max-width:1400px;margin:0 auto;padding:18px 16px 60px;display:flex;flex-direction:column;gap:22px}
+.slide{position:relative;width:100%;min-width:0}
+.slide img{display:block;width:100%;height:auto;border-radius:6px;box-shadow:0 10px 36px rgba(0,0,0,.45)}
+.num{position:absolute;top:8px;right:10px;font-size:11px;color:#5f6f80;background:rgba(255,255,255,.75);
+     border-radius:10px;padding:1px 8px;text-decoration:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:700px){#bar b{display:none}#stage{gap:12px;padding:10px 8px 40px}}
 """
 
 JS = """
 const S=[...document.querySelectorAll('.slide')], N=S.length, SEC=JSON.parse(document.getElementById('secs').textContent);
-let i=0;
-function show(k){i=Math.max(0,Math.min(N-1,k));S.forEach((s,j)=>s.classList.toggle('on',j===i));
+function update(){let i=0;const y=56;S.forEach((s,j)=>{if(s.getBoundingClientRect().top<=y+innerHeight*0.35)i=j});
   document.getElementById('cnt').textContent=(i+1)+' / '+N;document.getElementById('sec').textContent=SEC[i];
-  document.getElementById('prog').style.width=(100*(i+1)/N)+'%';history.replaceState(null,'','#'+(i+1));}
-document.addEventListener('keydown',e=>{if(['ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();show(i+1)}
-  else if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();show(i-1)}else if(e.key==='Home')show(0);
-  else if(e.key==='End')show(N-1);else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}});
-document.getElementById('stage').addEventListener('click',e=>{show(e.clientX>innerWidth/2?i+1:i-1)});
-document.getElementById('prev').onclick=()=>show(i-1);document.getElementById('next').onclick=()=>show(i+1);
-document.getElementById('fs').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();
-let t0=null;addEventListener('touchstart',e=>t0=e.touches[0].clientX);addEventListener('touchend',e=>{if(t0===null)return;
-  const d=e.changedTouches[0].clientX-t0;if(Math.abs(d)>40)show(d<0?i+1:i-1);t0=null});
-show((parseInt(location.hash.slice(1))||1)-1);
+  document.getElementById('prog').style.width=(100*(i+1)/N)+'%';}
+addEventListener('scroll',update,{passive:true});addEventListener('resize',update);update();
 """
 
 
@@ -66,14 +59,14 @@ def write(pdf_path: Path, pptx_slides_text: list[list[str]], out: Path, title: s
         src = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
         alt = " · ".join(t.replace("\n", " ") for t in texts[:2])
         body = html.escape(" \n".join(texts))
-        parts.append(f'<section class="slide" aria-label="Slide {k + 1}"><img src="{src}" alt="{html.escape(alt)}">'
+        parts.append(f'<section class="slide" id="{k + 1}" aria-label="Slide {k + 1}"><img src="{src}" alt="{html.escape(alt)}" '
+                     f'loading="{"eager" if k < 2 else "lazy"}"><a class="num" href="#{k + 1}">{k + 1}</a>'
                      f'<div class="sr">{body}</div></section>')
     import json
     page_html = (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" '
                  f'content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>{CSS}</style></head>'
-                 f'<body><div id="stage">{"".join(parts)}</div><div id="prog"></div><div id="bar"><b>REVOKED BUT NOT FORGOTTEN</b>'
-                 f'<span id="sec"></span><button id="prev" aria-label="Previous slide">&#8592;</button><span id="cnt"></span>'
-                 f'<button id="next" aria-label="Next slide">&#8594;</button><button id="fs">Fullscreen</button></div>'
+                 f'<body><div id="bar"><b>REVOKED BUT NOT FORGOTTEN</b><span id="sec"></span><span id="cnt"></span></div>'
+                 f'<div id="prog"></div><main id="stage">{"".join(parts)}</main>'
                  f'<script type="application/json" id="secs">{json.dumps(secs)}</script><script>{JS}</script></body></html>')
     out.write_text(page_html, encoding="utf-8")
     return len(doc)
